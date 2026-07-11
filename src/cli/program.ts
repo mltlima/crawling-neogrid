@@ -1,9 +1,15 @@
 import { Command } from 'commander';
 
-import type { InputValidationResult, ProbeResult } from '../domain/index.js';
+import type {
+  CrawlBatchResult,
+  InputValidationResult,
+  ProbeResult,
+} from '../domain/index.js';
 import {
+  crawlBatch,
   probeProduct,
   validateInputFile,
+  writeBatchReport,
   writeValidationReport,
 } from './composition.js';
 import { VERSION } from './version.js';
@@ -25,6 +31,17 @@ export interface CliDependencies {
   ) => Promise<void>;
   readonly setExitCode: (exitCode: 0 | 2) => void;
   readonly probeProduct: (options: ProbeOptions) => Promise<ProbeResult>;
+  readonly crawlBatch: (options: {
+    readonly inputPath: string;
+    readonly limit?: number;
+    readonly headless: boolean;
+    readonly timeoutMs: number;
+    readonly settleTimeoutMs: number;
+  }) => Promise<CrawlBatchResult>;
+  readonly writeBatchReport: (
+    filePath: string,
+    report: CrawlBatchResult,
+  ) => Promise<void>;
 }
 
 const defaultDependencies: CliDependencies = {
@@ -34,6 +51,8 @@ const defaultDependencies: CliDependencies = {
     process.exitCode = exitCode;
   },
   probeProduct,
+  crawlBatch,
+  writeBatchReport,
 };
 
 interface ValidateInputOptions {
@@ -48,6 +67,15 @@ interface ProbeUrlOptions {
   readonly settleTimeout: string;
   readonly artifactsDir: string;
   readonly trace?: boolean;
+}
+
+interface CrawlOptions {
+  readonly input: string;
+  readonly report: string;
+  readonly limit?: string;
+  readonly headed?: boolean;
+  readonly timeout: string;
+  readonly settleTimeout: string;
 }
 
 function writeJson(program: Command, value: unknown): void {
@@ -125,6 +153,53 @@ export function createCli(
       });
       writeJson(program, result);
       dependencies.setExitCode(result.product.status === 'success' ? 0 : 2);
+    });
+
+  program
+    .command('crawl')
+    .description('Processa sequencialmente um arquivo validado, sem retries.')
+    .requiredOption(
+      '-i, --input <arquivo>',
+      'arquivo .xlsx, .csv, .txt ou .json',
+    )
+    .option(
+      '--report <arquivo>',
+      'relatório técnico intermediário',
+      './artifacts/batch-report.json',
+    )
+    .option('--limit <quantidade>', 'limita os registros válidos processados')
+    .option('--headed', 'exibe o navegador durante o lote')
+    .option('--timeout <ms>', 'timeout de navegação em milissegundos', '30000')
+    .option('--settle-timeout <ms>', 'espera máxima por sinal terminal', '5000')
+    .action(async (options: CrawlOptions) => {
+      const limit =
+        options.limit === undefined ? undefined : Number(options.limit);
+      const timeoutMs = Number(options.timeout);
+      const settleTimeoutMs = Number(options.settleTimeout);
+      if (limit !== undefined && (!Number.isInteger(limit) || limit <= 0)) {
+        throw new Error('--limit deve ser um inteiro positivo.');
+      }
+      if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
+        throw new Error('--timeout deve ser um inteiro positivo.');
+      }
+      if (!Number.isInteger(settleTimeoutMs) || settleTimeoutMs <= 0) {
+        throw new Error('--settle-timeout deve ser um inteiro positivo.');
+      }
+      const result = await dependencies.crawlBatch({
+        inputPath: options.input,
+        ...(limit === undefined ? {} : { limit }),
+        headless: options.headed !== true,
+        timeoutMs,
+        settleTimeoutMs,
+      });
+      await dependencies.writeBatchReport(options.report, result);
+      writeJson(program, result.summary);
+      dependencies.setExitCode(
+        result.summary.invalidRecords === 0 &&
+          result.summary.failedRecords === 0
+          ? 0
+          : 2,
+      );
     });
 
   return program;

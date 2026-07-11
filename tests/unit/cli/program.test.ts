@@ -7,9 +7,36 @@ import {
   type CliDependencies,
 } from '../../../src/cli/program.js';
 import type {
+  CrawlBatchResult,
   InputValidationResult,
   ProbeResult,
 } from '../../../src/domain/index.js';
+
+function makeBatchResult(
+  failedRecords = 0,
+  invalidRecords = 0,
+): CrawlBatchResult {
+  return {
+    runId: 'batch-1',
+    source: { fileName: 'input.txt', format: 'txt' },
+    invalidRecords: [],
+    results: [],
+    summary: {
+      totalRecords: invalidRecords,
+      validRecords: 0,
+      invalidRecords,
+      selectedRecords: 0,
+      processedRecords: failedRecords,
+      successfulRecords: 0,
+      failedRecords,
+      successRatePercent: 0,
+      recordsByPageState: {},
+      recordsBySource: {},
+      recordsByOperationalError: {},
+      durationMs: 10,
+    },
+  };
+}
 
 interface InvocationResult {
   readonly stderr: string;
@@ -59,6 +86,8 @@ function makeDependencies(result: InputValidationResult): CliDependencies {
     writeReport: vi.fn(() => Promise.resolve()),
     setExitCode: vi.fn(),
     probeProduct: vi.fn(() => Promise.reject(new Error('not configured'))),
+    crawlBatch: vi.fn(() => Promise.reject(new Error('not configured'))),
+    writeBatchReport: vi.fn(() => Promise.resolve()),
   } satisfies CliDependencies;
 }
 
@@ -105,6 +134,25 @@ describe('CLI', () => {
     expect(result.stderr).toBe('');
     expect(result.stdout).toContain('Usage: ifood-crawler [options]');
     expect(result.stdout).toContain('controlled single-product probing');
+    expect(result.stdout).toContain('crawl');
+  });
+
+  it('documents every crawl option in command help', () => {
+    const program = createCli('9.8.7');
+    const result =
+      program.commands
+        .find((command) => command.name() === 'crawl')
+        ?.helpInformation() ?? '';
+    for (const option of [
+      '--input',
+      '--report',
+      '--limit',
+      '--headed',
+      '--timeout',
+      '--settle-timeout',
+    ]) {
+      expect(result).toContain(option);
+    }
   });
 
   it('prints the package version', async () => {
@@ -272,5 +320,67 @@ describe('CLI', () => {
         settleTimeoutMs: 5000,
       }),
     );
+  });
+
+  it('applies crawl defaults, writes the report and prints only its summary', async () => {
+    const dependencies = makeDependencies(makeValidationResult());
+    const batch = makeBatchResult();
+    vi.mocked(dependencies.crawlBatch).mockResolvedValueOnce(batch);
+    const result = await invokeCli(
+      ['crawl', '--input', 'input.txt'],
+      dependencies,
+    );
+    expect(dependencies.crawlBatch).toHaveBeenCalledWith({
+      inputPath: 'input.txt',
+      headless: true,
+      timeoutMs: 30000,
+      settleTimeoutMs: 5000,
+    });
+    expect(dependencies.writeBatchReport).toHaveBeenCalledWith(
+      './artifacts/batch-report.json',
+      batch,
+    );
+    expect(JSON.parse(result.stdout)).toEqual(batch.summary);
+    expect(dependencies.setExitCode).toHaveBeenCalledWith(0);
+  });
+
+  it('sets crawl exit code 2 for invalid input or a failed product', async () => {
+    for (const batch of [makeBatchResult(0, 1), makeBatchResult(1, 0)]) {
+      const dependencies = makeDependencies(makeValidationResult());
+      vi.mocked(dependencies.crawlBatch).mockResolvedValueOnce(batch);
+      await invokeCli(['crawl', '--input', 'input.txt'], dependencies);
+      expect(dependencies.setExitCode).toHaveBeenCalledWith(2);
+    }
+  });
+
+  it.each([
+    ['--limit', '0'],
+    ['--timeout', '-1'],
+    ['--settle-timeout', 'invalid'],
+  ])(
+    'rejects invalid crawl %s before dependencies run',
+    async (option, value) => {
+      const dependencies = makeDependencies(makeValidationResult());
+      await expect(
+        invokeCli(
+          ['crawl', '--input', 'input.txt', option, value],
+          dependencies,
+        ),
+      ).rejects.toThrow(option);
+      expect(dependencies.crawlBatch).not.toHaveBeenCalled();
+      expect(dependencies.writeBatchReport).not.toHaveBeenCalled();
+    },
+  );
+
+  it('propagates a fatal crawl error without writing a report or setting an exit code', async () => {
+    const dependencies = makeDependencies(makeValidationResult());
+    vi.mocked(dependencies.crawlBatch).mockRejectedValueOnce(
+      new Error('launch failed'),
+    );
+    await expect(
+      invokeCli(['crawl', '--input', 'input.txt'], dependencies),
+    ).rejects.toThrow('launch failed');
+    expect(dependencies.writeBatchReport).not.toHaveBeenCalled();
+    expect(dependencies.setExitCode).not.toHaveBeenCalled();
   });
 });

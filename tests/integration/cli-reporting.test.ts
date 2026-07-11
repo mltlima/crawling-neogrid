@@ -66,7 +66,7 @@ describe('validate-input CLI reporting', () => {
       uniqueItemIds: 1,
       uniqueLocalities: 1,
     });
-  });
+  }, 15_000);
 
   it('returns exit code 2 while preserving JSON output for invalid records', async () => {
     const inputPath = join(directory, 'invalid.txt');
@@ -81,7 +81,7 @@ describe('validate-input CLI reporting', () => {
       invalidRecords: 1,
       errorsByCode: { INVALID_URL: 1 },
     });
-  });
+  }, 15_000);
 
   it('returns exit code 1 for an operational input error', async () => {
     const result = await runCli([

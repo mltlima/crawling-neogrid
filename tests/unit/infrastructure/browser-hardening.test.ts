@@ -2,7 +2,7 @@ import type { Browser, BrowserContext, Page } from 'playwright';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
-  PlaywrightBrowserSession,
+  PlaywrightBrowserSessionFactory,
   shouldLoadResponseBody,
   type PlaywrightLauncher,
 } from '../../../src/infrastructure/browser/playwright-browser-session.js';
@@ -27,11 +27,10 @@ const input = {
 };
 
 const probeOptions = {
-  input,
-  headless: true,
   timeoutMs: 100,
   settleTimeoutMs: 50,
   trace: false,
+  captureScreenshot: false,
   maxJsonBytes: 1_000,
 };
 
@@ -44,12 +43,15 @@ describe('Playwright browser hardening', () => {
       launch: () => Promise.resolve(browser),
     };
 
-    await expect(
-      new PlaywrightBrowserSession(
-        createLogger({ level: 'silent' }),
-        launcher,
-      ).probe(probeOptions),
-    ).rejects.toMatchObject({ code: 'PROBE_FAILED' });
+    const session = await new PlaywrightBrowserSessionFactory(
+      createLogger({ level: 'silent' }),
+      launcher,
+    ).open(true);
+    await expect(session.probe(input, probeOptions)).rejects.toMatchObject({
+      code: 'PROBE_FAILED',
+    });
+    await session.close();
+    await session.close();
     expect(browserClose).toHaveBeenCalledOnce();
   });
 
@@ -69,12 +71,14 @@ describe('Playwright browser hardening', () => {
       launch: () => Promise.resolve(browser),
     };
 
-    await expect(
-      new PlaywrightBrowserSession(
-        createLogger({ level: 'silent' }),
-        launcher,
-      ).probe(probeOptions),
-    ).rejects.toMatchObject({ code: 'PROBE_FAILED' });
+    const session = await new PlaywrightBrowserSessionFactory(
+      createLogger({ level: 'silent' }),
+      launcher,
+    ).open(true);
+    await expect(session.probe(input, probeOptions)).rejects.toMatchObject({
+      code: 'PROBE_FAILED',
+    });
+    await session.close();
     expect(contextClose).toHaveBeenCalledOnce();
     expect(browserClose).toHaveBeenCalledOnce();
   });
@@ -101,12 +105,14 @@ describe('Playwright browser hardening', () => {
       launch: () => Promise.resolve(browser),
     };
 
-    await expect(
-      new PlaywrightBrowserSession(
-        createLogger({ level: 'silent' }),
-        launcher,
-      ).probe(probeOptions),
-    ).rejects.toMatchObject({ code: 'PROBE_FAILED' });
+    const session = await new PlaywrightBrowserSessionFactory(
+      createLogger({ level: 'silent' }),
+      launcher,
+    ).open(true);
+    await expect(session.probe(input, probeOptions)).rejects.toMatchObject({
+      code: 'PROBE_FAILED',
+    });
+    await session.close();
     expect(pageClose).toHaveBeenCalledOnce();
     expect(contextClose).toHaveBeenCalledOnce();
     expect(browserClose).toHaveBeenCalledOnce();

@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { ProbeProductUseCase } from '../../../src/application/index.js';
-import type {
-  BrowserSession,
-  ExtractionContext,
-  ProbeArtifactsWriter,
-  ProductExtractionPipeline,
+import {
+  CrawlProductUseCase,
+  ProbeProductUseCase,
+  type BrowserSessionFactory,
+  type ExtractionContext,
+  type ManagedBrowserSession,
+  type ProbeArtifactsWriter,
+  type ProductExtractionPipeline,
 } from '../../../src/application/index.js';
 import type { PageProbe } from '../../../src/domain/index.js';
 import { makeIfoodUrl } from '../../fixtures/input-values.js';
@@ -30,10 +32,15 @@ const page: PageProbe = {
 };
 
 describe('ProbeProductUseCase', () => {
-  it('validates, extracts, classifies and writes evidence', async () => {
+  it('uses shared collection, captures evidence and closes the session', async () => {
     const browserProbe = vi.fn(() => Promise.resolve(page));
-    const browser: BrowserSession = {
+    const sessionClose = vi.fn(() => Promise.resolve());
+    const session: ManagedBrowserSession = {
       probe: browserProbe,
+      close: sessionClose,
+    };
+    const factory: BrowserSessionFactory = {
+      open: vi.fn(() => Promise.resolve(session)),
     };
     const extractor: ProductExtractionPipeline = {
       extract: vi.fn((context: ExtractionContext) =>
@@ -51,18 +58,20 @@ describe('ProbeProductUseCase', () => {
         }),
       ),
     };
-    const artifactsWrite = vi.fn(() => Promise.resolve());
-    const artifacts: ProbeArtifactsWriter = {
-      write: artifactsWrite,
-    };
-    const useCase = new ProbeProductUseCase(
-      browser,
+    const crawlProduct = new CrawlProductUseCase(
       extractor,
-      artifacts,
       () => 'PRODUCT_FOUND',
-      () => 'run-1',
       () => 100,
     );
+    const artifactsWrite = vi.fn(() => Promise.resolve());
+    const artifacts: ProbeArtifactsWriter = { write: artifactsWrite };
+    const useCase = new ProbeProductUseCase(
+      factory,
+      crawlProduct,
+      artifacts,
+      () => 'run-1',
+    );
+
     const result = await useCase.execute({
       url: makeIfoodUrl(),
       headless: true,
@@ -72,29 +81,35 @@ describe('ProbeProductUseCase', () => {
       trace: false,
       maxJsonBytes: 100,
     });
+
     expect(result).toMatchObject({
       runId: 'run-1',
       source: 'dom',
       pageState: 'PRODUCT_FOUND',
     });
+    expect(browserProbe).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ captureScreenshot: true, trace: false }),
+    );
     expect(artifactsWrite).toHaveBeenCalledOnce();
+    expect(sessionClose).toHaveBeenCalledOnce();
   });
 
   it('rejects an invalid URL before opening a browser', async () => {
-    const browserProbe = vi.fn(() => Promise.reject(new Error('must not run')));
-    const browser: BrowserSession = {
-      probe: browserProbe,
-    };
-    const extractor: ProductExtractionPipeline = { extract: vi.fn() };
+    const open = vi.fn(() => Promise.reject(new Error('must not run')));
+    const factory: BrowserSessionFactory = { open };
+    const crawlProduct = new CrawlProductUseCase(
+      { extract: vi.fn() },
+      () => 'UNKNOWN_PAGE_STATE',
+    );
     const artifacts: ProbeArtifactsWriter = { write: vi.fn() };
     const useCase = new ProbeProductUseCase(
-      browser,
-      extractor,
+      factory,
+      crawlProduct,
       artifacts,
-      () => 'UNKNOWN_PAGE_STATE',
       () => 'run',
-      () => 0,
     );
+
     await expect(
       useCase.execute({
         url: 'https://example.com',
@@ -106,6 +121,6 @@ describe('ProbeProductUseCase', () => {
         maxJsonBytes: 1,
       }),
     ).rejects.toMatchObject({ code: 'PROBE_FAILED' });
-    expect(browserProbe).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
   });
 });

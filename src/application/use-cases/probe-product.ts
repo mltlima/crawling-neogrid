@@ -1,20 +1,14 @@
 import { join } from 'node:path';
 
-import {
-  probeResultSchema,
-  type PageProbe,
-  type PageState,
-  type ProbeResult,
-  type ProductOutput,
-} from '../../domain/index.js';
+import { probeResultSchema, type ProbeResult } from '../../domain/index.js';
 import { InputOperationalError } from '../errors/input-operational-error.js';
-import type { BrowserSession } from '../ports/browser-session.js';
+import type { BrowserSessionFactory } from '../ports/browser-session.js';
 import type { ProbeArtifactsWriter } from '../ports/probe-artifacts.js';
-import type { ProductExtractionPipeline } from '../ports/product-extractor.js';
 import {
   isValidInputRecord,
   validateReceivedUrl,
 } from '../services/validate-url.js';
+import type { CrawlProductCollector } from './crawl-product.js';
 
 export interface ProbeProductOptions {
   readonly url: string;
@@ -28,19 +22,13 @@ export interface ProbeProductOptions {
 
 export class ProbeProductUseCase {
   public constructor(
-    private readonly browser: BrowserSession,
-    private readonly extractor: ProductExtractionPipeline,
+    private readonly browserFactory: BrowserSessionFactory,
+    private readonly crawlProduct: CrawlProductCollector,
     private readonly artifacts: ProbeArtifactsWriter,
-    private readonly classifyPage: (
-      page: PageProbe,
-      product: ProductOutput | null,
-    ) => PageState,
     private readonly createRunId: () => string,
-    private readonly now: () => number = () => Date.now(),
   ) {}
 
   public async execute(options: ProbeProductOptions): Promise<ProbeResult> {
-    const startedAt = this.now();
     const input = validateReceivedUrl({
       originalIndex: 0,
       lineNumber: null,
@@ -52,45 +40,41 @@ export class ProbeProductUseCase {
         `${input.errorCode}: ${input.message}`,
       );
     }
+
     const runId = this.createRunId();
     const artifactsDirectory = join(
       options.artifactsDirectory,
       'probes',
       runId,
     );
-    const page = await this.browser.probe({
-      input,
-      headless: options.headless,
-      timeoutMs: options.timeoutMs,
-      settleTimeoutMs: options.settleTimeoutMs,
-      trace: options.trace,
-      maxJsonBytes: options.maxJsonBytes,
-    });
-    const extraction = await this.extractor.extract({ input, page });
-    const pageState = this.classifyPage(page, extraction.product);
-    const product: ProductOutput = extraction.product ?? {
-      title: null,
-      normal_price: null,
-      discount_price: null,
-      product_url: input.normalizedUrl,
-      image_url: null,
-      status: 'error',
-      error_message: `Produto não extraído. Estado da página: ${pageState}.`,
-    };
-    const result = probeResultSchema.parse({
-      runId,
-      source: extraction.source,
-      pageState,
-      product,
-      artifactsDirectory,
-      durationMs: Math.max(0, this.now() - startedAt),
-    });
-    await this.artifacts.write({
-      directory: artifactsDirectory,
-      result,
-      page,
-      screenshotOnSuccess: false,
-    });
-    return result;
+    const session = await this.browserFactory.open(options.headless);
+    try {
+      const collected = await this.crawlProduct.execute(session, input, {
+        timeoutMs: options.timeoutMs,
+        settleTimeoutMs: options.settleTimeoutMs,
+        trace: options.trace,
+        captureScreenshot: true,
+        maxJsonBytes: options.maxJsonBytes,
+      });
+      const result = probeResultSchema.parse({
+        runId,
+        source: collected.result.source,
+        pageState: collected.result.pageState,
+        product: collected.result.product,
+        artifactsDirectory,
+        durationMs: collected.result.durationMs,
+      });
+      if (collected.page !== null) {
+        await this.artifacts.write({
+          directory: artifactsDirectory,
+          result,
+          page: collected.page,
+          screenshotOnSuccess: true,
+        });
+      }
+      return result;
+    } finally {
+      await session.close();
+    }
   }
 }

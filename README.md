@@ -1,6 +1,6 @@
 # iFood Batch Crawler
 
-Crawler batch via CLI para o desafio técnico da Neogrid. A Etapa 2 lê, valida, normaliza e analisa entradas de forma totalmente offline; ainda não existe coleta de produtos.
+Crawler batch via CLI para o desafio técnico da Neogrid. A Etapa 4 combina validação de entrada, coleta sequencial isolada com Playwright e relatório técnico, com desenvolvimento e testes inteiramente offline.
 
 ## Requisitos
 
@@ -57,7 +57,7 @@ A saída do terminal continua sendo o resumo em JSON, com ou sem `--report`.
 |    `2` | Arquivo processado, mas existe pelo menos um registro inválido.       |
 |    `1` | Erro operacional, incluindo leitura, formato ou escrita do relatório. |
 
-São aceitos `.xlsx`, `.csv`, `.txt` e `.json`. XLSX e CSV exigem uma coluna `url` (case-insensitive); TXT recebe uma URL por linha; JSON recebe um array de strings ou de objetos com a propriedade `url`. Não há comando de coleta nesta etapa.
+São aceitos `.xlsx`, `.csv`, `.txt` e `.json`. XLSX e CSV exigem uma coluna `url` (case-insensitive); TXT recebe uma URL por linha; JSON recebe um array de strings ou de objetos com a propriedade `url`.
 
 ## Qualidade
 
@@ -88,7 +88,7 @@ As variáveis são documentadas em `.env.example` e validadas com Zod. Concorrê
 - `dotenv`: carregamento local de variáveis de ambiente.
 - `zod`: validação e tipagem da configuração.
 - `pino`: logs estruturados em JSON com redação de campos sensíveis.
-- `playwright`: base de automação futura e alinhamento com a imagem oficial do container; não é usado para coleta nesta etapa.
+- `playwright`: navegador gerenciado para probe isolado e coleta batch sequencial, com um contexto novo por URL.
 - `exceljs`: leitura isolada de planilhas XLSX pelo adapter de entrada.
 - `csv-parse`: parsing seguro de registros CSV pelo adapter de entrada.
 
@@ -123,4 +123,21 @@ Evidências sanitizadas ficam em `artifacts/probes/<run-id>/`; erros têm query 
 
 Testes Playwright usam apenas um servidor em `127.0.0.1`. A execução live autorizada encontrou verificação humana; o probe encerrou sem clicar, resolver ou contornar o desafio. Novas execuções live não fazem parte do CI.
 
-Consulte [docs/architecture.md](docs/architecture.md), [docs/adr/0001-project-foundation.md](docs/adr/0001-project-foundation.md) e [docs/adr/0002-input-validation.md](docs/adr/0002-input-validation.md) para as decisões arquiteturais.
+## Pipeline batch sequencial
+
+```bash
+node dist/cli/index.js crawl \
+  --input ./input/urls.xlsx \
+  --report ./artifacts/batch-report.json \
+  --limit 10 \
+  --timeout 30000 \
+  --settle-timeout 5000
+```
+
+O lote preserva ordem e duplicidades, abre um processo Chromium e cria contexto e página isolados por registro. O processamento é deliberadamente sequencial e continua após falhas individuais. O terminal recebe somente o resumo JSON; o relatório técnico completo é escrito atomicamente. O batch não captura screenshots nem traces.
+
+No comando `crawl`, o exit code é `0` quando todos os selecionados têm sucesso e não há entrada inválida, `2` quando o lote termina com rejeição ou falha individual e `1` em falha operacional fatal. Concorrência, retries, checkpoint e export final ficam para etapas posteriores.
+
+O desenvolvimento batch offline pode continuar com fixtures, doubles e servidor local. A execução live da planilha oficial permanece proibida enquanto não houver acesso normal e autorizado; nenhum lote real de 999 URLs foi executado nesta etapa.
+
+Consulte [docs/architecture.md](docs/architecture.md) e [docs/adr/0004-sequential-batch-pipeline.md](docs/adr/0004-sequential-batch-pipeline.md) para as decisões arquiteturais.

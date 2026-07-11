@@ -14,13 +14,15 @@ import type { Logger } from 'pino';
 
 import {
   InputOperationalError,
-  type BrowserProbeOptions,
-  type BrowserSession,
+  type BrowserSessionFactory,
+  type ManagedBrowserProbeOptions,
+  type ManagedBrowserSession,
 } from '../../application/index.js';
 import type {
   DomSnapshot,
   PageProbe,
   ResponseCandidate,
+  ValidInputRecord,
 } from '../../domain/index.js';
 import { sanitizeDiagnosticMessages } from './diagnostic-sanitizer.js';
 
@@ -107,21 +109,50 @@ function containsExactItemId(
   );
 }
 
-export class PlaywrightBrowserSession implements BrowserSession {
+export class PlaywrightBrowserSessionFactory implements BrowserSessionFactory {
   public constructor(
     private readonly logger: Logger,
     private readonly launcher: PlaywrightLauncher = chromium,
   ) {}
 
-  public async probe(options: BrowserProbeOptions): Promise<PageProbe> {
-    let browser: Browser | null = null;
+  public async open(headless: boolean): Promise<ManagedBrowserSession> {
+    try {
+      const browser = await this.launcher.launch({ headless });
+      this.logger.info('Browser opened');
+      return new PlaywrightManagedBrowserSession(browser, this.logger);
+    } catch (error: unknown) {
+      throw new InputOperationalError(
+        'PROBE_FAILED',
+        'Falha ao abrir o browser.',
+        {
+          cause: error,
+        },
+      );
+    }
+  }
+}
+
+export class PlaywrightManagedBrowserSession implements ManagedBrowserSession {
+  private closed = false;
+
+  public constructor(
+    private readonly browser: Browser,
+    private readonly logger: Logger,
+  ) {}
+
+  public async probe(
+    input: ValidInputRecord,
+    options: ManagedBrowserProbeOptions,
+  ): Promise<PageProbe> {
     let context: BrowserContext | null = null;
     let page: Page | null = null;
     let traceDirectory: string | null = null;
 
     try {
-      browser = await this.launcher.launch({ headless: options.headless });
-      context = await browser.newContext({
+      if (this.closed) {
+        throw new Error('Browser session is closed.');
+      }
+      context = await this.browser.newContext({
         locale: 'pt-BR',
         timezoneId: 'America/Sao_Paulo',
       });
@@ -149,9 +180,15 @@ export class PlaywrightBrowserSession implements BrowserSession {
       );
       page.on('response', (response) => {
         responseTasks.push(
-          this.inspectResponse(response, options, requestStartedAt, () => {
-            candidateSignalResolve?.();
-          }),
+          this.inspectResponse(
+            response,
+            input,
+            options,
+            requestStartedAt,
+            () => {
+              candidateSignalResolve?.();
+            },
+          ),
         );
       });
 
@@ -162,7 +199,7 @@ export class PlaywrightBrowserSession implements BrowserSession {
 
       let mainResponse: Response | null = null;
       try {
-        mainResponse = await page.goto(options.input.normalizedUrl, {
+        mainResponse = await page.goto(input.normalizedUrl, {
           waitUntil: 'domcontentloaded',
           timeout: options.timeoutMs,
         });
@@ -182,12 +219,14 @@ export class PlaywrightBrowserSession implements BrowserSession {
 
       const [html, screenshot, dom, responses] = await Promise.all([
         page.content().catch(() => ''),
-        page
-          .screenshot({
-            fullPage: true,
-            timeout: Math.max(options.timeoutMs, 5_000),
-          })
-          .catch(() => new Uint8Array()),
+        options.captureScreenshot
+          ? page
+              .screenshot({
+                fullPage: true,
+                timeout: Math.max(options.timeoutMs, 5_000),
+              })
+              .catch(() => new Uint8Array())
+          : Promise.resolve(new Uint8Array()),
         this.readDomSnapshot(page),
         Promise.all([...responseTasks]),
       ]);
@@ -220,13 +259,21 @@ export class PlaywrightBrowserSession implements BrowserSession {
     } finally {
       await page?.close().catch(() => undefined);
       await context?.close().catch(() => undefined);
-      await browser?.close().catch(() => undefined);
       if (traceDirectory !== null) {
         await rm(traceDirectory, { recursive: true, force: true }).catch(
           () => undefined,
         );
       }
     }
+  }
+
+  public async close(): Promise<void> {
+    if (this.closed) {
+      return;
+    }
+    this.closed = true;
+    await this.browser.close().catch(() => undefined);
+    this.logger.info('Browser closed');
   }
 
   private async waitForSettleSignal(
@@ -301,7 +348,8 @@ export class PlaywrightBrowserSession implements BrowserSession {
 
   private async inspectResponse(
     response: Response,
-    options: BrowserProbeOptions,
+    input: ValidInputRecord,
+    options: ManagedBrowserProbeOptions,
     startedAt: WeakMap<object, number>,
     notifyExactItem: () => void,
   ): Promise<ResponseCandidate> {
@@ -311,8 +359,8 @@ export class PlaywrightBrowserSession implements BrowserSession {
     const resourceType = response.request().resourceType();
     const urlCandidate =
       CANDIDATE_URL_PATTERN.test(rawUrl) ||
-      rawUrl.includes(options.input.itemId) ||
-      rawUrl.includes(options.input.merchantId);
+      rawUrl.includes(input.itemId) ||
+      rawUrl.includes(input.merchantId);
     const jsonContent = /(?:application|text)\/(?:[\w.+-]*\+)?json/i.test(
       contentType,
     );
@@ -324,8 +372,8 @@ export class PlaywrightBrowserSession implements BrowserSession {
       url: rawUrl,
       contentLength,
       maxJsonBytes: options.maxJsonBytes,
-      itemId: options.input.itemId,
-      merchantId: options.input.merchantId,
+      itemId: input.itemId,
+      merchantId: input.merchantId,
     });
 
     let body: Uint8Array = new Uint8Array();
@@ -343,7 +391,7 @@ export class PlaywrightBrowserSession implements BrowserSession {
     if (shouldReadBody && !loadedOversized) {
       try {
         jsonPayload = JSON.parse(Buffer.from(body).toString('utf8')) as unknown;
-        containsItem = containsExactItemId(jsonPayload, options.input.itemId);
+        containsItem = containsExactItemId(jsonPayload, input.itemId);
         if (containsItem) {
           notifyExactItem();
         }

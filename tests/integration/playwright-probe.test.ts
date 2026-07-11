@@ -8,7 +8,8 @@ import {
   NetworkExtractor,
   classifyPageState,
 } from '../../src/adapters/crawler/ifood/index.js';
-import { PlaywrightBrowserSession } from '../../src/infrastructure/browser/index.js';
+import type { ManagedBrowserSession } from '../../src/application/index.js';
+import { PlaywrightBrowserSessionFactory } from '../../src/infrastructure/browser/index.js';
 import { createLogger } from '../../src/observability/index.js';
 import type { PageProbe, ValidInputRecord } from '../../src/domain/index.js';
 import { ITEM_ID, MERCHANT_ID } from '../fixtures/input-values.js';
@@ -16,6 +17,7 @@ import { ITEM_ID, MERCHANT_ID } from '../fixtures/input-values.js';
 describe('Playwright probe against a local server', () => {
   let server: Server;
   let origin: string;
+  let browserSession: ManagedBrowserSession;
   const payload = JSON.stringify({
     product: {
       id: ITEM_ID,
@@ -70,6 +72,15 @@ describe('Playwright probe against a local server', () => {
         );
       } else if (path === '/timeout') {
         setTimeout(() => response.end('late'), 500);
+      } else if (path === '/cookie-set') {
+        response.setHeader('set-cookie', 'session=first; Path=/');
+        response.end('<h1 data-testid="product-title">Primeiro contexto</h1>');
+      } else if (path === '/cookie-check') {
+        const shared =
+          request.headers.cookie?.includes('session=first') === true;
+        response.end(
+          `<h1 data-testid="product-title">${shared ? 'Cookie vazou' : 'Contexto isolado'}</h1>`,
+        );
       } else {
         response.end('<body>unknown structure</body>');
       }
@@ -82,9 +93,13 @@ describe('Playwright probe against a local server', () => {
       throw new Error('Local server failed');
     }
     origin = `http://127.0.0.1:${String(address.port)}`;
+    browserSession = await new PlaywrightBrowserSessionFactory(
+      createLogger({ level: 'silent' }),
+    ).open(true);
   });
 
   afterAll(async () => {
+    await browserSession.close();
     await new Promise<void>((resolve, reject) =>
       server.close((error) =>
         error === undefined ? resolve() : reject(error),
@@ -113,14 +128,11 @@ describe('Playwright probe against a local server', () => {
     maxJsonBytes = 1_000_000,
     settleTimeoutMs = 500,
   ): Promise<PageProbe> {
-    return new PlaywrightBrowserSession(
-      createLogger({ level: 'silent' }),
-    ).probe({
-      input: input(path),
-      headless: true,
+    return browserSession.probe(input(path), {
       timeoutMs,
       settleTimeoutMs,
       trace: false,
+      captureScreenshot: true,
       maxJsonBytes,
     });
   }
@@ -171,6 +183,13 @@ describe('Playwright probe against a local server', () => {
     );
     expect(candidate?.summary.payloadTruncated).toBe(true);
     expect(candidate?.jsonPayload).toBeNull();
+  });
+
+  it('reuses the managed browser while isolating cookies between probes', async () => {
+    await probe('/cookie-set');
+    const isolated = await probe('/cookie-check');
+    expect(isolated.html).toContain('Contexto isolado');
+    expect(isolated.html).not.toContain('Cookie vazou');
   });
 
   it.each(['/network', '/dom', '/unavailable'])(

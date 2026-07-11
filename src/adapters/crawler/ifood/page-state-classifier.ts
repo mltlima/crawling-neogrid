@@ -33,7 +33,11 @@ export function classifyPageState(
   ) {
     return 'PRODUCT_UNAVAILABLE';
   }
-  if (/captcha|acesso bloqueado|access denied/.test(text)) {
+  if (
+    /captcha|acesso bloqueado|access denied|antes de continuarmos|pressione e segure|confirma?r? que você é (?:um )?humano/.test(
+      text,
+    )
+  ) {
     return 'ACCESS_BLOCKED';
   }
   if (product?.status === 'success') {

@@ -105,5 +105,20 @@ describe('classifyPageState', () => {
         null,
       ),
     ).toBe('ACCESS_BLOCKED');
+    expect(
+      classifyPageState(
+        probe({
+          dom: {
+            title: null,
+            normalPrice: null,
+            discountPrice: null,
+            imageUrl: null,
+            bodyText:
+              'Antes de continuarmos, pressione e segure para confirmar que você é um humano.',
+          },
+        }),
+        null,
+      ),
+    ).toBe('ACCESS_BLOCKED');
   });
 });

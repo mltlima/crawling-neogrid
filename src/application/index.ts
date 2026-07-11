@@ -1,5 +1,6 @@
 export { InputOperationalError } from './errors/input-operational-error.js';
 export type { InputFileInspector, InputReader } from './ports/input-reader.js';
+export type { ValidationReportWriter } from './ports/validation-report-writer.js';
 export {
   countDuplicateOccurrences,
   detectDuplicates,

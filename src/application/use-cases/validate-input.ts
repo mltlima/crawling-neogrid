@@ -18,12 +18,25 @@ import {
   validateReceivedUrl,
 } from '../services/validate-url.js';
 
+function countBy<T>(
+  values: readonly T[],
+  selectKey: (value: T) => string,
+): Record<string, number> {
+  const counts = new Map<string, number>();
+  for (const value of values) {
+    const key = selectKey(value);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return Object.fromEntries(counts);
+}
+
 export class ValidateInputUseCase {
   private readonly readersByExtension: ReadonlyMap<string, InputReader>;
 
   public constructor(
     readers: readonly InputReader[],
     private readonly fileInspector: InputFileInspector,
+    private readonly now: () => number = () => Date.now(),
   ) {
     this.readersByExtension = new Map(
       readers.map((reader) => [reader.extension, reader]),
@@ -31,6 +44,8 @@ export class ValidateInputUseCase {
   }
 
   public async execute(filePath: string): Promise<InputValidationResult> {
+    const startedAt = this.now();
+
     if (filePath.trim().length === 0) {
       throw new InputOperationalError(
         'FILE_NOT_FOUND',
@@ -63,6 +78,15 @@ export class ValidateInputUseCase {
 
     const duplicates = detectDuplicates(validRecords);
     const storeGroups = groupRecordsByMerchant(validRecords);
+    const recordsByMerchant = countBy(
+      validRecords,
+      (record) => record.merchantId,
+    );
+    const recordsByLocality = countBy(
+      validRecords,
+      (record) => record.locality,
+    );
+    const errorsByCode = countBy(invalidRecords, (record) => record.errorCode);
 
     return inputValidationResultSchema.parse({
       batch,
@@ -83,6 +107,16 @@ export class ValidateInputUseCase {
         duplicateMerchantItems: countDuplicateOccurrences(
           duplicates.merchantItems,
         ),
+        uniqueUrls: new Set(validRecords.map((record) => record.normalizedUrl))
+          .size,
+        uniqueItemIds: new Set(validRecords.map((record) => record.itemId))
+          .size,
+        uniqueLocalities: new Set(validRecords.map((record) => record.locality))
+          .size,
+        recordsByMerchant,
+        recordsByLocality,
+        errorsByCode,
+        durationMs: Math.max(0, this.now() - startedAt),
       },
     });
   }

@@ -117,6 +117,22 @@ export const validationSummarySchema = z
     duplicateFullUrls: z.number().int().nonnegative(),
     duplicateItemIds: z.number().int().nonnegative(),
     duplicateMerchantItems: z.number().int().nonnegative(),
+    uniqueUrls: z.number().int().nonnegative(),
+    uniqueItemIds: z.number().int().nonnegative(),
+    uniqueLocalities: z.number().int().nonnegative(),
+    recordsByMerchant: z.record(
+      z.string().uuid(),
+      z.number().int().nonnegative(),
+    ),
+    recordsByLocality: z.record(
+      z.string().min(1),
+      z.number().int().nonnegative(),
+    ),
+    errorsByCode: z.record(
+      inputValidationErrorCodeSchema,
+      z.number().int().nonnegative(),
+    ),
+    durationMs: z.number().nonnegative(),
   })
   .strict();
 export type ValidationSummary = z.infer<typeof validationSummarySchema>;

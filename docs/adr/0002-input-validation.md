@@ -13,11 +13,15 @@ Cada adapter implementa `InputReader` e converte sua origem em `InputBatch`. O c
 
 UUIDs de merchant e item seguem a forma canônica RFC 4122. Duplicidades são contadas como ocorrências além da primeira e acompanhadas pelos índices zero-based de origem. O agrupamento por `merchantId` mantém todos os registros, inclusive duplicados.
 
-O contrato futuro de produto é strict e possui exatamente sete campos. A Etapa 2 não instancia produtos nem escreve arquivos de saída.
+O contrato futuro de produto é strict e possui exatamente sete campos. A Etapa 2 não instancia produtos nem escreve arquivos de produtos.
+
+O resumo inclui dimensões únicas, distribuições por merchant/localidade, erros por código e duração. A CLI pode persistir o relatório completo via `ValidationReportWriter`, sem acoplar o caso de uso ao filesystem. Exit code 2 representa um lote concluído com rejeições; exit code 1 fica reservado a falhas operacionais.
 
 ## Consequências
 
 - Novos formatos podem ser adicionados sem alterar a validação.
 - Resultados são determinísticos e testáveis sem Playwright ou HTTP.
 - O resumo distingue volume inválido, vazio e duplicado sem perda de rastreabilidade.
+- Automação pode distinguir sucesso total, rejeições de dados e falhas operacionais pelos códigos 0, 2 e 1.
+- `--report` adiciona um artefato completo sem alterar o resumo JSON emitido no terminal.
 - ExcelJS recebe override transitivo de `uuid` para uma versão corrigida; testes XLSX protegem essa compatibilidade.

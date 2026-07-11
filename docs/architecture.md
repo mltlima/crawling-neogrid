@@ -57,3 +57,5 @@ caminho -> inspector -> seleção por extensão -> InputReader -> InputBatch
 ```
 
 `ValidateInputUseCase` conhece apenas `InputReader` e `InputFileInspector`. ExcelJS e csv-parse ficam restritos aos adapters. A composição concreta ocorre na CLI, permitindo testar a aplicação com qualquer origem que produza o contrato comum.
+
+O relatório de validação é escrito por `ValidationReportWriter`; a implementação JSON fica em `adapters/output`. O writer cria diretórios pais e converte qualquer falha de persistência em `REPORT_WRITE_FAILED`. A CLI imprime sempre o mesmo resumo JSON e traduz o resultado em exit code 0 (todos válidos), 2 (rejeições por registro) ou 1 (falha operacional).

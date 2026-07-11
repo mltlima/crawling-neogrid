@@ -4,7 +4,8 @@ export type InputOperationalErrorCode =
   | 'FILE_UNREADABLE'
   | 'UNSUPPORTED_EXTENSION'
   | 'MISSING_URL_COLUMN'
-  | 'INVALID_JSON';
+  | 'INVALID_JSON'
+  | 'REPORT_WRITE_FAILED';
 
 export class InputOperationalError extends Error {
   public readonly code: InputOperationalErrorCode;

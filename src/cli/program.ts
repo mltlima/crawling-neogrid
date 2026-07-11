@@ -1,16 +1,30 @@
 import { Command } from 'commander';
 
 import type { InputValidationResult } from '../domain/index.js';
-import { validateInputFile } from './composition.js';
+import { validateInputFile, writeValidationReport } from './composition.js';
 import { VERSION } from './version.js';
 
 export interface CliDependencies {
   readonly validateInput: (filePath: string) => Promise<InputValidationResult>;
+  readonly writeReport: (
+    filePath: string,
+    report: InputValidationResult,
+  ) => Promise<void>;
+  readonly setExitCode: (exitCode: 0 | 2) => void;
 }
 
 const defaultDependencies: CliDependencies = {
   validateInput: validateInputFile,
+  writeReport: writeValidationReport,
+  setExitCode: (exitCode) => {
+    process.exitCode = exitCode;
+  },
 };
+
+interface ValidateInputOptions {
+  readonly input: string;
+  readonly report?: string;
+}
 
 export function createCli(
   version: string = VERSION,
@@ -36,8 +50,12 @@ export function createCli(
       '-i, --input <arquivo>',
       'arquivo .xlsx, .csv, .txt ou .json',
     )
-    .action(async (options: { input: string }) => {
+    .option('--report <arquivo>', 'salva o relatório completo em JSON')
+    .action(async (options: ValidateInputOptions) => {
       const result = await dependencies.validateInput(options.input);
+      if (options.report !== undefined) {
+        await dependencies.writeReport(options.report, result);
+      }
       const output = `${JSON.stringify(result.summary, null, 2)}\n`;
       const outputConfiguration = program.configureOutput();
       if (outputConfiguration.writeOut === undefined) {
@@ -45,6 +63,7 @@ export function createCli(
       } else {
         outputConfiguration.writeOut(output);
       }
+      dependencies.setExitCode(result.invalidRecords.length === 0 ? 0 : 2);
     });
 
   return program;

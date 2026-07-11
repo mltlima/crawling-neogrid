@@ -1,2 +1,1 @@
-// Output adapters belong to a later phase.
-export {};
+export { JsonValidationReportWriter } from './json-validation-report-writer.js';

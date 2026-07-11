@@ -11,6 +11,7 @@ export default defineConfig({
       ],
       include: [
         'src/adapters/input/**/*.ts',
+        'src/adapters/output/**/*.ts',
         'src/application/**/*.ts',
         'src/cli/program.ts',
         'src/config/**/*.ts',

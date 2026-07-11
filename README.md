@@ -39,6 +39,24 @@ Para validar uma entrada e imprimir o resumo em JSON:
 node dist/cli/index.js validate-input --input ./input/urls.csv
 ```
 
+Para também salvar o relatório completo (lote, registros válidos e inválidos, duplicidades, grupos e resumo):
+
+```bash
+node dist/cli/index.js validate-input \
+  --input ./input/urls.csv \
+  --report ./artifacts/input-validation.json
+```
+
+A saída do terminal continua sendo o resumo em JSON, com ou sem `--report`.
+
+### Exit codes
+
+| Código | Significado                                                           |
+| -----: | --------------------------------------------------------------------- |
+|    `0` | Arquivo processado e todos os registros válidos.                      |
+|    `2` | Arquivo processado, mas existe pelo menos um registro inválido.       |
+|    `1` | Erro operacional, incluindo leitura, formato ou escrita do relatório. |
+
 São aceitos `.xlsx`, `.csv`, `.txt` e `.json`. XLSX e CSV exigem uma coluna `url` (case-insensitive); TXT recebe uma URL por linha; JSON recebe um array de strings ou de objetos com a propriedade `url`. Não há comando de coleta nesta etapa.
 
 ## Qualidade
@@ -83,5 +101,7 @@ Uma URL aceita usa HTTPS, host exato `www.ifood.com.br`, nenhuma credencial ou p
 A URL original é preservada integralmente. A versão normalizada remove fragmento, normaliza UUIDs para minúsculas, remove a barra final do caminho e ordena os parâmetros de busca. Duplicidades são relatadas por URL normalizada, por `itemId` e por `merchantId + itemId`; nenhum registro é descartado.
 
 Erros de uma linha não encerram o lote. O resultado mantém código, mensagem, valor e índice originais. Arquivo inexistente, vazio, ilegível, extensão não suportada ou estrutura inválida gera um erro operacional explícito.
+
+O resumo informa totais gerais e de duplicidade, `uniqueUrls`, `uniqueItemIds`, `uniqueLocalities`, distribuições `recordsByMerchant` e `recordsByLocality`, contagem `errorsByCode` e `durationMs`. Métricas de unicidade e distribuição consideram os registros válidos; erros consideram os rejeitados.
 
 Consulte [docs/architecture.md](docs/architecture.md), [docs/adr/0001-project-foundation.md](docs/adr/0001-project-foundation.md) e [docs/adr/0002-input-validation.md](docs/adr/0002-input-validation.md) para as decisões arquiteturais.

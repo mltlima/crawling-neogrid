@@ -1,0 +1,12 @@
+.git
+.github
+artifacts
+coverage
+deliverables
+dist
+docs
+evidence
+input
+node_modules
+tests
+*.log

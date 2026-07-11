@@ -1,0 +1,21 @@
+export type InputOperationalErrorCode =
+  | 'FILE_NOT_FOUND'
+  | 'FILE_EMPTY'
+  | 'FILE_UNREADABLE'
+  | 'UNSUPPORTED_EXTENSION'
+  | 'MISSING_URL_COLUMN'
+  | 'INVALID_JSON';
+
+export class InputOperationalError extends Error {
+  public readonly code: InputOperationalErrorCode;
+
+  public constructor(
+    code: InputOperationalErrorCode,
+    message: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = 'InputOperationalError';
+    this.code = code;
+  }
+}

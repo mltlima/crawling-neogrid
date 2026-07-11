@@ -1,2 +1,2 @@
-// Domain contracts will be introduced without crawling concerns in a later phase.
-export {};
+export * from './input-contracts.js';
+export * from './product-output.js';

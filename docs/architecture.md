@@ -21,8 +21,8 @@ O domínio e a aplicação não devem importar implementações de adapters ou i
 
 - `src/cli`: composição do processo e interface de linha de comando.
 - `src/config`: leitura, coerção e validação do ambiente.
-- `src/domain`: entidades, invariantes e portas independentes de tecnologia.
-- `src/application`: casos de uso e processamento do lote.
+- `src/domain`: schemas strict, tipos, invariantes e contratos independentes de tecnologia.
+- `src/application`: porta de leitura, validação pura, análise e caso de uso do lote.
 - `src/adapters/input`: transformação das entradas externas para as portas da aplicação.
 - `src/adapters/crawler/ifood`: implementação futura do coletor específico.
 - `src/adapters/output`: serialização do contrato de saída.
@@ -36,8 +36,24 @@ O domínio e a aplicação não devem importar implementações de adapters ou i
 
 ## Invariantes
 
-- O contrato final terá exatamente os sete campos exigidos. Ele ainda não é materializado nesta etapa porque não foi implementado nenhum domínio ou output; fases futuras devem introduzi-lo como um único tipo validado e coberto por testes de contrato.
+- O contrato futuro de produto está materializado como um schema strict com exatamente `title`, `normal_price`, `discount_price`, `product_url`, `image_url`, `status` e `error_message`. Campos adicionais são rejeitados.
 - Configurações de concorrência e retry nunca serão constantes escondidas na implementação.
 - Testes unitários e de CI usam fixtures e doubles; chamadas ao iFood são proibidas.
 - Credenciais, mecanismos de stealth, resolução de CAPTCHA e rotação de proxies estão fora do projeto.
 - Logs são JSON e campos comuns de segredo são redigidos.
+
+## Pipeline offline de entrada
+
+```text
+caminho -> inspector -> seleção por extensão -> InputReader -> InputBatch
+                                                           |
+                                                           v
+                                    validação individual de URLs
+                                      | válidas       | inválidas
+                                      v               v
+                           duplicidades/grupos     erros por registro
+                                      \               /
+                                       resumo do lote
+```
+
+`ValidateInputUseCase` conhece apenas `InputReader` e `InputFileInspector`. ExcelJS e csv-parse ficam restritos aos adapters. A composição concreta ocorre na CLI, permitindo testar a aplicação com qualquer origem que produza o contrato comum.

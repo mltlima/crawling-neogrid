@@ -1,6 +1,6 @@
 # iFood Batch Crawler
 
-Fundação de um crawler batch via CLI para o desafio técnico da Neogrid. A Etapa 1 não acessa o iFood, não coleta dados e não contém lógica de crawling.
+Crawler batch via CLI para o desafio técnico da Neogrid. A Etapa 2 lê, valida, normaliza e analisa entradas de forma totalmente offline; ainda não existe coleta de produtos.
 
 ## Requisitos
 
@@ -33,7 +33,13 @@ node dist/cli/index.js --help
 node dist/cli/index.js --version
 ```
 
-Não há comando de coleta nesta etapa.
+Para validar uma entrada e imprimir o resumo em JSON:
+
+```bash
+node dist/cli/index.js validate-input --input ./input/urls.csv
+```
+
+São aceitos `.xlsx`, `.csv`, `.txt` e `.json`. XLSX e CSV exigem uma coluna `url` (case-insensitive); TXT recebe uma URL por linha; JSON recebe um array de strings ou de objetos com a propriedade `url`. Não há comando de coleta nesta etapa.
 
 ## Qualidade
 
@@ -65,5 +71,17 @@ As variáveis são documentadas em `.env.example` e validadas com Zod. Concorrê
 - `zod`: validação e tipagem da configuração.
 - `pino`: logs estruturados em JSON com redação de campos sensíveis.
 - `playwright`: base de automação futura e alinhamento com a imagem oficial do container; não é usado para coleta nesta etapa.
+- `exceljs`: leitura isolada de planilhas XLSX pelo adapter de entrada.
+- `csv-parse`: parsing seguro de registros CSV pelo adapter de entrada.
 
-Consulte [docs/architecture.md](docs/architecture.md) e [docs/adr/0001-project-foundation.md](docs/adr/0001-project-foundation.md) para as decisões arquiteturais.
+O override de `uuid@11.1.1` corrige uma vulnerabilidade transitiva do ExcelJS mantendo compatibilidade com a função `v4()` utilizada pela biblioteca.
+
+## Validação e normalização de URLs
+
+Uma URL aceita usa HTTPS, host exato `www.ifood.com.br`, nenhuma credencial ou porta personalizada, caminho `/delivery/{localidade}/{loja}/{merchantId}` e query string com `item={itemId}`. `merchantId` e `itemId` devem ser UUIDs.
+
+A URL original é preservada integralmente. A versão normalizada remove fragmento, normaliza UUIDs para minúsculas, remove a barra final do caminho e ordena os parâmetros de busca. Duplicidades são relatadas por URL normalizada, por `itemId` e por `merchantId + itemId`; nenhum registro é descartado.
+
+Erros de uma linha não encerram o lote. O resultado mantém código, mensagem, valor e índice originais. Arquivo inexistente, vazio, ilegível, extensão não suportada ou estrutura inválida gera um erro operacional explícito.
+
+Consulte [docs/architecture.md](docs/architecture.md), [docs/adr/0001-project-foundation.md](docs/adr/0001-project-foundation.md) e [docs/adr/0002-input-validation.md](docs/adr/0002-input-validation.md) para as decisões arquiteturais.

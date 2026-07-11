@@ -1,17 +1,28 @@
 import { CommanderError } from 'commander';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { createCli, runCli } from '../../../src/cli/program.js';
+import {
+  createCli,
+  runCli,
+  type CliDependencies,
+} from '../../../src/cli/program.js';
+import type { InputValidationResult } from '../../../src/domain/index.js';
 
 interface InvocationResult {
   readonly stderr: string;
   readonly stdout: string;
 }
 
-async function invokeCli(args: readonly string[]): Promise<InvocationResult> {
+async function invokeCli(
+  args: readonly string[],
+  dependencies?: CliDependencies,
+): Promise<InvocationResult> {
   let stdout = '';
   let stderr = '';
-  const program = createCli('9.8.7');
+  const program =
+    dependencies === undefined
+      ? createCli('9.8.7')
+      : createCli('9.8.7', dependencies);
 
   program.exitOverride();
   program.configureOutput({
@@ -62,5 +73,38 @@ describe('CLI', () => {
 
   it('runs with a process-style argument vector', async () => {
     await expect(runCli(['node', 'ifood-crawler'])).resolves.toBeUndefined();
+  });
+
+  it('validates an input through an injected use case and prints its summary', async () => {
+    const validationResult: InputValidationResult = {
+      batch: { sourcePath: 'input.txt', format: 'txt', records: [] },
+      validRecords: [],
+      invalidRecords: [],
+      duplicates: { fullUrls: [], itemIds: [], merchantItems: [] },
+      storeGroups: [],
+      summary: {
+        totalRecords: 3,
+        validRecords: 2,
+        invalidRecords: 1,
+        emptyRecords: 0,
+        uniqueMerchants: 1,
+        duplicateFullUrls: 0,
+        duplicateItemIds: 0,
+        duplicateMerchantItems: 0,
+      },
+    };
+    const validateInput = vi.fn(
+      (filePath: string): Promise<InputValidationResult> => {
+        expect(filePath).toBe('input.txt');
+        return Promise.resolve(validationResult);
+      },
+    );
+
+    const result = await invokeCli(['validate-input', '--input', 'input.txt'], {
+      validateInput,
+    });
+
+    expect(validateInput).toHaveBeenCalledOnce();
+    expect(JSON.parse(result.stdout)).toEqual(validationResult.summary);
   });
 });

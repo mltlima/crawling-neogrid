@@ -5,7 +5,9 @@ export type InputOperationalErrorCode =
   | 'UNSUPPORTED_EXTENSION'
   | 'MISSING_URL_COLUMN'
   | 'INVALID_JSON'
-  | 'REPORT_WRITE_FAILED';
+  | 'REPORT_WRITE_FAILED'
+  | 'PROBE_FAILED'
+  | 'ARTIFACT_WRITE_FAILED';
 
 export class InputOperationalError extends Error {
   public readonly code: InputOperationalErrorCode;

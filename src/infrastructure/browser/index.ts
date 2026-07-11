@@ -1,2 +1,2 @@
-// Browser infrastructure belongs to a later phase.
-export {};
+export { PlaywrightArtifactsWriter } from './playwright-artifacts-writer.js';
+export { PlaywrightBrowserSession } from './playwright-browser-session.js';

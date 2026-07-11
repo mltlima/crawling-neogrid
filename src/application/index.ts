@@ -1,6 +1,20 @@
 export { InputOperationalError } from './errors/input-operational-error.js';
 export type { InputFileInspector, InputReader } from './ports/input-reader.js';
 export type { ValidationReportWriter } from './ports/validation-report-writer.js';
+export type {
+  BrowserProbeOptions,
+  BrowserSession,
+} from './ports/browser-session.js';
+export type {
+  ExtractedProduct,
+  ExtractionContext,
+  ProductExtractionPipeline,
+  ProductExtractor,
+} from './ports/product-extractor.js';
+export type {
+  ProbeArtifactsOptions,
+  ProbeArtifactsWriter,
+} from './ports/probe-artifacts.js';
 export {
   countDuplicateOccurrences,
   detectDuplicates,
@@ -11,3 +25,7 @@ export {
   validateReceivedUrl,
 } from './services/validate-url.js';
 export { ValidateInputUseCase } from './use-cases/validate-input.js';
+export {
+  ProbeProductUseCase,
+  type ProbeProductOptions,
+} from './use-cases/probe-product.js';

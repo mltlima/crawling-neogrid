@@ -104,4 +104,20 @@ Erros de uma linha não encerram o lote. O resultado mantém código, mensagem, 
 
 O resumo informa totais gerais e de duplicidade, `uniqueUrls`, `uniqueItemIds`, `uniqueLocalities`, distribuições `recordsByMerchant` e `recordsByLocality`, contagem `errorsByCode` e `durationMs`. Métricas de unicidade e distribuição consideram os registros válidos; erros consideram os rejeitados.
 
+## Probe controlado de um produto
+
+```bash
+node dist/cli/index.js probe-url \
+  --url "https://www.ifood.com.br/delivery/...?..." \
+  --timeout 30000 \
+  --artifacts-dir ./artifacts \
+  --trace
+```
+
+Use `--headed` somente quando precisar observar o navegador. O comando aceita uma URL por execução, valida-a antes da navegação e tenta, nesta ordem, dados JSON carregados pela página, dados embutidos e DOM. Não há retry, concorrência, credenciais, stealth, proxy ou chamada direta a endpoints privados.
+
+Preços são inteiros em centavos: `2590` representa R$ 25,90. O resultado informa `network`, `embedded-data`, `dom` ou `none`, além do estado independente da página. Evidências sanitizadas ficam em `artifacts/probes/<run-id>/`; screenshot é automática em falha e trace só existe com `--trace`.
+
+Testes Playwright usam apenas um servidor em `127.0.0.1`. Uma execução live exige URL e autorização explícitas e não faz parte do CI.
+
 Consulte [docs/architecture.md](docs/architecture.md), [docs/adr/0001-project-foundation.md](docs/adr/0001-project-foundation.md) e [docs/adr/0002-input-validation.md](docs/adr/0002-input-validation.md) para as decisões arquiteturais.

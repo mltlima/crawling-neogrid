@@ -59,3 +59,9 @@ caminho -> inspector -> seleção por extensão -> InputReader -> InputBatch
 `ValidateInputUseCase` conhece apenas `InputReader` e `InputFileInspector`. ExcelJS e csv-parse ficam restritos aos adapters. A composição concreta ocorre na CLI, permitindo testar a aplicação com qualquer origem que produza o contrato comum.
 
 O relatório de validação é escrito por `ValidationReportWriter`; a implementação JSON fica em `adapters/output`. O writer cria diretórios pais e converte qualquer falha de persistência em `REPORT_WRITE_FAILED`. A CLI imprime sempre o mesmo resumo JSON e traduz o resultado em exit code 0 (todos válidos), 2 (rejeições por registro) ou 1 (falha operacional).
+
+## Probe Playwright
+
+`ProbeProductUseCase` depende apenas das portas `BrowserSession`, `ProductExtractionPipeline` e `ProbeArtifactsWriter`. A infraestrutura Playwright abre Chromium e contexto isolados por execução, observa respostas originadas pela página, sanitiza URLs e fecha tudo em `finally`. O adapter iFood encadeia `network`, `embedded-data` e `dom`, interrompendo após o primeiro produto válido.
+
+Payloads JSON maiores que 1 MB não são processados. Evidências persistem apenas resumos de respostas, erros, resultado, screenshot condicional e trace opcional; payloads, headers, cookies e storages não são gravados.

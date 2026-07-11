@@ -1,0 +1,9 @@
+{
+  "product": {
+    "id": "22222222-2222-4222-8222-222222222222",
+    "name": "Produto de teste",
+    "price": { "value": 2590 },
+    "imageUrl": "https://static.example.test/product.png",
+    "available": true
+  }
+}

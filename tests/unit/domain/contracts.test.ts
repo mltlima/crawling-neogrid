@@ -33,4 +33,36 @@ describe('domain contracts', () => {
       productOutputSchema.parse({ ...output, accidental_field: true }),
     ).toThrow();
   });
+
+  it('enforces product status, error and price invariants', () => {
+    const base = {
+      title: 'Produto',
+      normal_price: 1000,
+      discount_price: null,
+      product_url: makeIfoodUrl(),
+      image_url: null,
+    };
+    expect(() =>
+      productOutputSchema.parse({
+        ...base,
+        status: 'success',
+        error_message: 'erro',
+      }),
+    ).toThrow();
+    expect(() =>
+      productOutputSchema.parse({
+        ...base,
+        status: 'error',
+        error_message: null,
+      }),
+    ).toThrow();
+    expect(() =>
+      productOutputSchema.parse({
+        ...base,
+        discount_price: 1200,
+        status: 'success',
+        error_message: null,
+      }),
+    ).toThrow();
+  });
 });

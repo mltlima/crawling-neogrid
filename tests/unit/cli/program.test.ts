@@ -222,6 +222,7 @@ describe('CLI', () => {
       url: probeResult.product.product_url,
       headless: false,
       timeoutMs: 5000,
+      settleTimeoutMs: 5000,
       artifactsDirectory: 'evidence',
       trace: true,
     });
@@ -238,5 +239,38 @@ describe('CLI', () => {
       ),
     ).rejects.toThrow('--timeout deve ser um inteiro positivo');
     expect(dependencies.probeProduct).not.toHaveBeenCalled();
+  });
+
+  it('keeps trace disabled and uses the default settle timeout', async () => {
+    const dependencies = makeDependencies(makeValidationResult());
+    const probeResult: ProbeResult = {
+      runId: 'run-defaults',
+      source: 'none',
+      pageState: 'UNKNOWN_PAGE_STATE',
+      product: {
+        title: null,
+        normal_price: null,
+        discount_price: null,
+        product_url:
+          'https://www.ifood.com.br/delivery/local/loja/11111111-1111-4111-8111-111111111111?item=22222222-2222-4222-8222-222222222222',
+        image_url: null,
+        status: 'error',
+        error_message: 'Não extraído.',
+      },
+      artifactsDirectory: 'artifacts/probes/run-defaults',
+      durationMs: 1,
+    };
+    vi.mocked(dependencies.probeProduct).mockResolvedValueOnce(probeResult);
+    await invokeCli(
+      ['probe-url', '--url', probeResult.product.product_url],
+      dependencies,
+    );
+    expect(dependencies.probeProduct).toHaveBeenCalledWith(
+      expect.objectContaining({
+        trace: false,
+        headless: true,
+        settleTimeoutMs: 5000,
+      }),
+    );
   });
 });

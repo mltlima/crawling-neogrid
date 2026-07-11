@@ -206,4 +206,69 @@ describe('product extractors', () => {
       }),
     ).resolves.toBeNull();
   });
+
+  it('never returns another catalog product or an object without itemId', async () => {
+    const otherItemId = '55555555-5555-4555-8555-555555555555';
+    const catalog = {
+      products: [
+        { id: otherItemId, name: 'Produto errado', price: { value: 100 } },
+        { name: 'Sem identificador', price: { value: 200 } },
+        { id: ITEM_ID, name: 'Produto correto', price: { value: 300 } },
+      ],
+    };
+    const network = await new NetworkExtractor().extract({
+      input,
+      page: page({
+        responses: [
+          {
+            summary: {
+              url: 'https://example.test/catalog',
+              method: 'GET',
+              status: 200,
+              contentType: 'application/json',
+              durationMs: 1,
+              approximateSizeBytes: 100,
+              possibleProductData: true,
+              payloadTruncated: false,
+            },
+            jsonPayload: catalog,
+          },
+        ],
+      }),
+    });
+    const embedded = await new EmbeddedDataExtractor().extract({
+      input,
+      page: page({
+        html: `<script type="application/json">${JSON.stringify(catalog)}</script>`,
+      }),
+    });
+    expect(network?.title).toBe('Produto correto');
+    expect(embedded?.title).toBe('Produto correto');
+
+    const withoutTarget = {
+      products: catalog.products.slice(0, 2),
+    };
+    await expect(
+      new NetworkExtractor().extract({
+        input,
+        page: page({
+          responses: [
+            {
+              summary: {
+                url: 'https://example.test/catalog',
+                method: 'GET',
+                status: 200,
+                contentType: 'application/json',
+                durationMs: 1,
+                approximateSizeBytes: 100,
+                possibleProductData: true,
+                payloadTruncated: false,
+              },
+              jsonPayload: withoutTarget,
+            },
+          ],
+        }),
+      }),
+    ).resolves.toBeNull();
+  });
 });

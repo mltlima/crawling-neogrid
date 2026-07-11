@@ -6,6 +6,7 @@ import {
   type ProbeArtifactsOptions,
   type ProbeArtifactsWriter,
 } from '../../application/index.js';
+import { sanitizeDiagnosticMessages } from './diagnostic-sanitizer.js';
 
 export class PlaywrightArtifactsWriter implements ProbeArtifactsWriter {
   public async write(options: ProbeArtifactsOptions): Promise<void> {
@@ -24,11 +25,11 @@ export class PlaywrightArtifactsWriter implements ProbeArtifactsWriter {
         ),
         writeFile(
           join(options.directory, 'console-errors.json'),
-          json(options.page.consoleErrors),
+          json(sanitizeDiagnosticMessages(options.page.consoleErrors)),
         ),
         writeFile(
           join(options.directory, 'page-errors.json'),
-          json(options.page.pageErrors),
+          json(sanitizeDiagnosticMessages(options.page.pageErrors)),
         ),
       ]);
       if (

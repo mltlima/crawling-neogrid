@@ -67,7 +67,8 @@ export function findProductObject(
     const id = firstString(object, ['id', 'itemId', 'item_id']);
     const title = firstString(object, ['name', 'title', 'description']);
     if (
-      (id === itemId || id === null) &&
+      id !== null &&
+      id.toLowerCase() === itemId.toLowerCase() &&
       title !== null &&
       ('price' in object || 'value' in object)
     ) {

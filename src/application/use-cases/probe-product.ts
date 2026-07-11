@@ -20,6 +20,7 @@ export interface ProbeProductOptions {
   readonly url: string;
   readonly headless: boolean;
   readonly timeoutMs: number;
+  readonly settleTimeoutMs: number;
   readonly artifactsDirectory: string;
   readonly trace: boolean;
   readonly maxJsonBytes: number;
@@ -61,6 +62,7 @@ export class ProbeProductUseCase {
       input,
       headless: options.headless,
       timeoutMs: options.timeoutMs,
+      settleTimeoutMs: options.settleTimeoutMs,
       trace: options.trace,
       maxJsonBytes: options.maxJsonBytes,
     });

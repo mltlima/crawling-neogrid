@@ -12,6 +12,7 @@ interface ProbeOptions {
   readonly url: string;
   readonly headless: boolean;
   readonly timeoutMs: number;
+  readonly settleTimeoutMs: number;
   readonly artifactsDirectory: string;
   readonly trace: boolean;
 }
@@ -44,6 +45,7 @@ interface ProbeUrlOptions {
   readonly url: string;
   readonly headed?: boolean;
   readonly timeout: string;
+  readonly settleTimeout: string;
   readonly artifactsDir: string;
   readonly trace?: boolean;
 }
@@ -94,6 +96,11 @@ export function createCli(
     .option('--headed', 'exibe o navegador durante o probe')
     .option('--timeout <ms>', 'timeout de navegação em milissegundos', '30000')
     .option(
+      '--settle-timeout <ms>',
+      'espera máxima por um sinal terminal da página',
+      '5000',
+    )
+    .option(
       '--artifacts-dir <diretório>',
       'diretório base das evidências',
       'artifacts',
@@ -101,13 +108,18 @@ export function createCli(
     .option('--trace', 'salva um trace Playwright')
     .action(async (options: ProbeUrlOptions) => {
       const timeoutMs = Number(options.timeout);
+      const settleTimeoutMs = Number(options.settleTimeout);
       if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
         throw new Error('--timeout deve ser um inteiro positivo.');
+      }
+      if (!Number.isInteger(settleTimeoutMs) || settleTimeoutMs <= 0) {
+        throw new Error('--settle-timeout deve ser um inteiro positivo.');
       }
       const result = await dependencies.probeProduct({
         url: options.url,
         headless: options.headed !== true,
         timeoutMs,
+        settleTimeoutMs,
         artifactsDirectory: options.artifactsDir,
         trace: options.trace === true,
       });

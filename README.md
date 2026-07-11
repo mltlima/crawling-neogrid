@@ -110,14 +110,17 @@ O resumo informa totais gerais e de duplicidade, `uniqueUrls`, `uniqueItemIds`, 
 node dist/cli/index.js probe-url \
   --url "https://www.ifood.com.br/delivery/...?..." \
   --timeout 30000 \
+  --settle-timeout 5000 \
   --artifacts-dir ./artifacts \
   --trace
 ```
 
-Use `--headed` somente quando precisar observar o navegador. O comando aceita uma URL por execução, valida-a antes da navegação e tenta, nesta ordem, dados JSON carregados pela página, dados embutidos e DOM. Não há retry, concorrência, credenciais, stealth, proxy ou chamada direta a endpoints privados.
+Use `--headed` somente quando precisar observar o navegador. O comando aceita uma URL por execução, valida-a antes da navegação e tenta, nesta ordem, dados JSON carregados pela página, dados embutidos e DOM. `--settle-timeout` limita a espera por item em resposta candidata, conteúdo de produto no DOM, bloqueio, indisponibilidade ou pedido de localização. Não há espera fixa, retry, concorrência, credenciais, stealth, proxy ou chamada direta a endpoints privados.
 
-Preços são inteiros em centavos: `2590` representa R$ 25,90. O resultado informa `network`, `embedded-data`, `dom` ou `none`, além do estado independente da página. Evidências sanitizadas ficam em `artifacts/probes/<run-id>/`; screenshot é automática em falha e trace só existe com `--trace`.
+Preços são inteiros em centavos: `2590` representa R$ 25,90. O resultado informa `network`, `embedded-data`, `dom` ou `none`, além do estado independente da página. Network e embedded data só aceitam um objeto com `itemId` exato.
 
-Testes Playwright usam apenas um servidor em `127.0.0.1`. Uma execução live exige URL e autorização explícitas e não faz parte do CI.
+Evidências sanitizadas ficam em `artifacts/probes/<run-id>/`; erros têm query strings e tokens removidos e limites de tamanho/quantidade. Screenshot é automática em falha. Trace é desabilitado por padrão e só existe com `--trace`: ele pode conter dados temporários da sessão e nunca deve ser versionado ou entregue sem revisão manual.
+
+Testes Playwright usam apenas um servidor em `127.0.0.1`. A execução live autorizada encontrou verificação humana; o probe encerrou sem clicar, resolver ou contornar o desafio. Novas execuções live não fazem parte do CI.
 
 Consulte [docs/architecture.md](docs/architecture.md), [docs/adr/0001-project-foundation.md](docs/adr/0001-project-foundation.md) e [docs/adr/0002-input-validation.md](docs/adr/0002-input-validation.md) para as decisões arquiteturais.

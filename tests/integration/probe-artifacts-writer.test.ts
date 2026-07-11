@@ -37,8 +37,8 @@ describe('PlaywrightArtifactsWriter', () => {
           jsonPayload: { secret: 'must-not-be-written' },
         },
       ],
-      consoleErrors: ['console'],
-      pageErrors: ['page'],
+      consoleErrors: ['GET https://example.test/api?token=secret token=secret'],
+      pageErrors: ['authorization=hidden'],
       dom: {
         title: null,
         normalPrice: null,
@@ -77,6 +77,13 @@ describe('PlaywrightArtifactsWriter', () => {
       'utf8',
     );
     expect(responses).not.toContain('must-not-be-written');
+    const persistedDiagnostics = `${await readFile(
+      join(directory, 'console-errors.json'),
+      'utf8',
+    )}${await readFile(join(directory, 'page-errors.json'), 'utf8')}`;
+    expect(persistedDiagnostics).not.toContain('secret');
+    expect(persistedDiagnostics).not.toContain('hidden');
+    expect(persistedDiagnostics).not.toContain('?token=');
     await expect(
       access(join(directory, 'screenshot.png')),
     ).resolves.toBeUndefined();

@@ -33,10 +33,17 @@ describe('Playwright probe against a local server', () => {
         response
           .writeHead(200, { 'content-type': 'application/json' })
           .end(payload);
-      } else if (path === '/api/large') {
+      } else if (path === '/api/product-large') {
+        const largePayload = JSON.stringify({
+          itemId: ITEM_ID,
+          data: 'x'.repeat(2_000),
+        });
         response
-          .writeHead(200, { 'content-type': 'application/json' })
-          .end(JSON.stringify({ itemId: ITEM_ID, data: 'x'.repeat(2_000) }));
+          .writeHead(200, {
+            'content-type': 'application/json',
+            'content-length': String(Buffer.byteLength(largePayload)),
+          })
+          .end(largePayload);
       } else if (path === '/network') {
         response.end(
           `<script>fetch('/api/product?token=secret')</script><h1>Network</h1>`,
@@ -51,7 +58,7 @@ describe('Playwright probe against a local server', () => {
         response.end('<body>Produto indisponível</body>');
       } else if (path === '/large') {
         response.end(
-          `<script>fetch('/api/large?authorization=secret')</script>`,
+          `<script>fetch('/api/product-large?authorization=secret')</script>`,
         );
       } else if (path === '/forbidden') {
         response.writeHead(403).end('forbidden');
@@ -104,6 +111,7 @@ describe('Playwright probe against a local server', () => {
     path: string,
     timeoutMs = 2_000,
     maxJsonBytes = 1_000_000,
+    settleTimeoutMs = 500,
   ): Promise<PageProbe> {
     return new PlaywrightBrowserSession(
       createLogger({ level: 'silent' }),
@@ -111,6 +119,7 @@ describe('Playwright probe against a local server', () => {
       input: input(path),
       headless: true,
       timeoutMs,
+      settleTimeoutMs,
       trace: false,
       maxJsonBytes,
     });
@@ -158,9 +167,27 @@ describe('Playwright probe against a local server', () => {
   it('does not parse JSON payloads above the configured limit', async () => {
     const page = await probe('/large', 2_000, 100);
     const candidate = page.responses.find((item) =>
-      item.summary.url.includes('/api/large'),
+      item.summary.url.includes('/api/product-large'),
     );
     expect(candidate?.summary.payloadTruncated).toBe(true);
     expect(candidate?.jsonPayload).toBeNull();
+  });
+
+  it.each(['/network', '/dom', '/unavailable'])(
+    'settles early when %s emits a terminal signal',
+    async (path) => {
+      const startedAt = Date.now();
+      await probe(path, 5_000, 1_000_000, 3_000);
+      expect(Date.now() - startedAt).toBeLessThan(2_500);
+    },
+    15_000,
+  );
+
+  it('stops at the configured settle timeout without terminal signals', async () => {
+    const startedAt = Date.now();
+    await probe('/unknown', 5_000, 1_000_000, 200);
+    const elapsed = Date.now() - startedAt;
+    expect(elapsed).toBeGreaterThanOrEqual(150);
+    expect(elapsed).toBeLessThan(2_000);
   });
 });

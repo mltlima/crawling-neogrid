@@ -4,6 +4,7 @@ export interface BrowserProbeOptions {
   readonly input: ValidInputRecord;
   readonly headless: boolean;
   readonly timeoutMs: number;
+  readonly settleTimeoutMs: number;
   readonly trace: boolean;
   readonly maxJsonBytes: number;
 }

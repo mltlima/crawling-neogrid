@@ -66,6 +66,7 @@ export async function probeProduct(options: {
   readonly url: string;
   readonly headless: boolean;
   readonly timeoutMs: number;
+  readonly settleTimeoutMs: number;
   readonly artifactsDirectory: string;
   readonly trace: boolean;
 }): Promise<ProbeResult> {

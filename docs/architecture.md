@@ -62,6 +62,8 @@ O relatório de validação é escrito por `ValidationReportWriter`; a implement
 
 ## Probe Playwright
 
-`ProbeProductUseCase` depende apenas das portas `BrowserSession`, `ProductExtractionPipeline` e `ProbeArtifactsWriter`. A infraestrutura Playwright abre Chromium e contexto isolados por execução, observa respostas originadas pela página, sanitiza URLs e fecha tudo em `finally`. O adapter iFood encadeia `network`, `embedded-data` e `dom`, interrompendo após o primeiro produto válido.
+`ProbeProductUseCase` depende apenas das portas `BrowserSession`, `ProductExtractionPipeline` e `ProbeArtifactsWriter`. Browser, contexto e página são criados dentro de um único `try/finally` e fechados em ordem mesmo quando `newContext`, `newPage` ou setup falham. O adapter iFood encadeia `network`, `embedded-data` e `dom`, interrompendo após o primeiro produto válido com correspondência exata de `itemId`.
 
-Payloads JSON maiores que 1 MB não são processados. Evidências persistem apenas resumos de respostas, erros, resultado, screenshot condicional e trace opcional; payloads, headers, cookies e storages não são gravados.
+Antes de ler um body, a sessão rejeita imagens, fontes, CSS, mídia, content types não JSON, URLs irrelevantes e `content-length` acima de 1 MB. O body carregado também é limitado. A espera termina por resposta com o item exato, sinal terminal no DOM ou settle timeout configurável.
+
+Evidências persistem apenas resumos de respostas, diagnósticos sanitizados e limitados, resultado, screenshot condicional e trace opcional. Payloads, headers, cookies e storages não são gravados. Trace fica desligado por padrão e é tratado como material potencialmente sensível que exige revisão antes de qualquer entrega.

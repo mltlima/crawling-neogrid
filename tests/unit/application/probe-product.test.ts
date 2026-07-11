@@ -92,6 +92,9 @@ describe('ProbeProductUseCase', () => {
       expect.objectContaining({ captureScreenshot: true, trace: false }),
     );
     expect(artifactsWrite).toHaveBeenCalledOnce();
+    expect(artifactsWrite).toHaveBeenCalledWith(
+      expect.objectContaining({ screenshotOnSuccess: false }),
+    );
     expect(sessionClose).toHaveBeenCalledOnce();
   });
 

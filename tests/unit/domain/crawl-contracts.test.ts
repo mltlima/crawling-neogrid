@@ -73,6 +73,74 @@ describe('crawl batch contracts', () => {
   });
 
   it.each([
+    [
+      'successfulRecords',
+      {
+        summary: {
+          ...summary,
+          successfulRecords: 0,
+          failedRecords: 1,
+          successRatePercent: 0,
+        },
+      },
+    ],
+    [
+      'pageState',
+      { summary: { ...summary, recordsByPageState: { ACCESS_BLOCKED: 1 } } },
+    ],
+    ['source', { summary: { ...summary, recordsBySource: { dom: 1 } } }],
+    [
+      'operational error',
+      {
+        summary: {
+          ...summary,
+          recordsByOperationalError: { EXTRACTION_ERROR: 1 },
+        },
+      },
+    ],
+    [
+      'invalid records',
+      {
+        invalidRecords: [
+          {
+            originalIndex: 2,
+            lineNumber: 3,
+            originalValue: 'invalid',
+            errorCode: 'INVALID_URL',
+            message: 'Inválida.',
+          },
+        ],
+      },
+    ],
+  ])('rejects a report contradicting results by %s', (_label, change) => {
+    expect(() =>
+      crawlBatchResultSchema.parse({ ...result, ...change }),
+    ).toThrow('não corresponde');
+  });
+
+  it('rejects results outside ascending originalIndex order', () => {
+    const second = { ...result.results[0], originalIndex: 2 };
+    const first = { ...result.results[0], originalIndex: 1 };
+    const twoResultSummary = {
+      ...summary,
+      totalRecords: 2,
+      validRecords: 2,
+      selectedRecords: 2,
+      processedRecords: 2,
+      successfulRecords: 2,
+      recordsByPageState: { PRODUCT_FOUND: 2 },
+      recordsBySource: { network: 2 },
+    };
+    expect(() =>
+      crawlBatchResultSchema.parse({
+        ...result,
+        results: [second, first],
+        summary: twoResultSummary,
+      }),
+    ).toThrow('não corresponde');
+  });
+
+  it.each([
     [0, 0, 0],
     [4, 4, 100],
     [0, 4, 0],

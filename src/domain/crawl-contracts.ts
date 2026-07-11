@@ -89,10 +89,40 @@ export const crawlBatchResultSchema = z
   })
   .strict()
   .superRefine((batch, context) => {
-    if (
+    const successfulRecords = batch.results.filter(
+      (result) => result.product.status === 'success',
+    ).length;
+    const failedRecords = batch.results.length - successfulRecords;
+    const recordsByPageState = countResultsBy(
+      batch.results,
+      (result) => result.pageState,
+    );
+    const recordsBySource = countResultsBy(
+      batch.results,
+      (result) => result.source,
+    );
+    const recordsByOperationalError = countResultsBy(
+      batch.results.filter((result) => result.operationalErrorCode !== null),
+      (result) => result.operationalErrorCode ?? 'UNEXPECTED_ERROR',
+    );
+    const ordered = batch.results.every(
+      (result, index) =>
+        index === 0 ||
+        result.originalIndex > (batch.results[index - 1]?.originalIndex ?? -1),
+    );
+    const inconsistent =
       batch.invalidRecords.length !== batch.summary.invalidRecords ||
-      batch.results.length !== batch.summary.processedRecords
-    ) {
+      batch.results.length !== batch.summary.processedRecords ||
+      successfulRecords !== batch.summary.successfulRecords ||
+      failedRecords !== batch.summary.failedRecords ||
+      !sameCounts(recordsByPageState, batch.summary.recordsByPageState) ||
+      !sameCounts(recordsBySource, batch.summary.recordsBySource) ||
+      !sameCounts(
+        recordsByOperationalError,
+        batch.summary.recordsByOperationalError,
+      ) ||
+      !ordered;
+    if (inconsistent) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'O conteúdo do relatório não corresponde ao resumo.',
@@ -100,6 +130,31 @@ export const crawlBatchResultSchema = z
     }
   });
 export type CrawlBatchResult = z.infer<typeof crawlBatchResultSchema>;
+
+function countResultsBy<T>(
+  values: readonly T[],
+  keyOf: (value: T) => string,
+): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const value of values) {
+    const key = keyOf(value);
+    counts[key] = (counts[key] ?? 0) + 1;
+  }
+  return counts;
+}
+
+function sameCounts(
+  actual: Readonly<Record<string, number>>,
+  expected: Readonly<Record<string, number>>,
+): boolean {
+  const actualEntries = Object.entries(actual).sort(([left], [right]) =>
+    left.localeCompare(right),
+  );
+  const expectedEntries = Object.entries(expected).sort(([left], [right]) =>
+    left.localeCompare(right),
+  );
+  return JSON.stringify(actualEntries) === JSON.stringify(expectedEntries);
+}
 
 export function calculateSuccessRatePercent(
   successfulRecords: number,

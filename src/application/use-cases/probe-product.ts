@@ -69,7 +69,7 @@ export class ProbeProductUseCase {
           directory: artifactsDirectory,
           result,
           page: collected.page,
-          screenshotOnSuccess: true,
+          screenshotOnSuccess: false,
         });
       }
       return result;

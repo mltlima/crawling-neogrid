@@ -37,6 +37,12 @@ function firstNumber(
   return null;
 }
 
+function decimalPriceToCents(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? Math.round(value * 100)
+    : null;
+}
+
 export function parsePriceToCents(value: string | null): number | null {
   if (value === null) {
     return null;
@@ -70,7 +76,7 @@ export function findProductObject(
       id !== null &&
       id.toLowerCase() === itemId.toLowerCase() &&
       title !== null &&
-      ('price' in object || 'value' in object)
+      ('price' in object || 'value' in object || 'unitPrice' in object)
     ) {
       return object;
     }
@@ -102,6 +108,7 @@ export function productFromObject(
   const priceObject = asObject(object.price);
   const current =
     firstNumber(object, ['value', 'priceValue', 'currentPrice']) ??
+    decimalPriceToCents(object.unitPrice) ??
     (priceObject === null
       ? null
       : firstNumber(priceObject, ['value', 'current', 'discountValue']));
@@ -114,7 +121,10 @@ export function productFromObject(
     return null;
   }
   const available =
-    object.available !== false && object.status !== 'UNAVAILABLE';
+    object.available !== false &&
+    object.enabled !== false &&
+    object.status !== 'UNAVAILABLE' &&
+    object.availability !== 'UNAVAILABLE';
   const image = firstString(object, ['imageUrl', 'image', 'logoUrl']);
   const normalPrice = original ?? current;
   const discountPrice =

@@ -271,4 +271,62 @@ describe('product extractors', () => {
       }),
     ).resolves.toBeNull();
   });
+
+  it('parses the observed iFood menu item response by exact itemId', async () => {
+    const otherItemId = '55555555-5555-4555-8555-555555555555';
+    const observedShape = {
+      code: 'OK',
+      data: {
+        menu: [
+          {
+            code: 'section',
+            name: 'Mercearia',
+            itens: [
+              {
+                id: otherItemId,
+                description: 'Outro item',
+                unitPrice: 9.99,
+                availability: 'AVAILABLE',
+                enabled: true,
+              },
+              {
+                id: ITEM_ID,
+                description: 'Item iFood atual',
+                unitPrice: 25.9,
+                logoUrl: 'https://static.example.test/current.png',
+                availability: 'AVAILABLE',
+                enabled: true,
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const product = await new NetworkExtractor().extract({
+      input,
+      page: page({
+        responses: [
+          {
+            summary: {
+              url: 'https://www.ifood.com.br/site-api/v1/merchants/items',
+              method: 'GET',
+              status: 200,
+              contentType: 'application/json',
+              durationMs: 1,
+              approximateSizeBytes: 100,
+              possibleProductData: true,
+              payloadTruncated: false,
+            },
+            jsonPayload: observedShape,
+          },
+        ],
+      }),
+    });
+    expect(product).toMatchObject({
+      title: 'Item iFood atual',
+      normal_price: 2590,
+      image_url: 'https://static.example.test/current.png',
+      status: 'success',
+    });
+  });
 });

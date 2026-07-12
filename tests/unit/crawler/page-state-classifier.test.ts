@@ -30,7 +30,33 @@ describe('classifyPageState', () => {
   it.each([
     [probe({ timedOut: true }), 'NAVIGATION_TIMEOUT'],
     [probe({ httpStatus: 403 }), 'ACCESS_BLOCKED'],
+    [
+      probe({
+        responses: [
+          {
+            summary: {
+              url: 'https://example.test/items/target',
+              method: 'GET',
+              status: 403,
+              contentType: 'text/html',
+              durationMs: 1,
+              approximateSizeBytes: 1,
+              possibleProductData: true,
+              payloadTruncated: false,
+            },
+            jsonPayload: null,
+          },
+        ],
+      }),
+      'ACCESS_BLOCKED',
+    ],
     [probe({ httpStatus: 429 }), 'RATE_LIMITED'],
+    [
+      probe({
+        finalUrl: 'https://www.ifood.com.br/?item=22222222-2222-4222-8222-222222222222',
+      }),
+      'REDIRECTED_TO_HOME',
+    ],
     [probe({ httpStatus: 500 }), 'HTTP_ERROR'],
     [
       probe({

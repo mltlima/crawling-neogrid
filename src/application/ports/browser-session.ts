@@ -6,6 +6,7 @@ export interface ManagedBrowserProbeOptions {
   readonly trace: boolean;
   readonly captureScreenshot: boolean;
   readonly maxJsonBytes: number;
+  readonly maxRetryAfterMs?: number;
 }
 
 export interface ManagedBrowserSession {
@@ -14,6 +15,7 @@ export interface ManagedBrowserSession {
     options: ManagedBrowserProbeOptions,
   ): Promise<PageProbe>;
   close(): Promise<void>;
+  isConnected?(): boolean;
 }
 
 export interface BrowserSessionFactory {

@@ -20,6 +20,7 @@ function makeBatchResult(
     runId: 'batch-1',
     source: { fileName: 'input.txt', format: 'txt' },
     invalidRecords: [],
+    skippedInputs: [],
     results: [],
     summary: {
       totalRecords: invalidRecords,
@@ -34,6 +35,17 @@ function makeBatchResult(
       recordsBySource: {},
       recordsByOperationalError: {},
       durationMs: 10,
+      configuredConcurrency: 1,
+      maxObservedConcurrency: 0,
+      totalAttempts: 0,
+      retriedRecords: 0,
+      retriesPerformed: 0,
+      recoveredRecords: 0,
+      exhaustedRetries: 0,
+      skippedRecords: 0,
+      browserRestarts: 0,
+      circuitBreakerOpened: false,
+      circuitBreakerReason: null,
     },
   };
 }
@@ -150,6 +162,13 @@ describe('CLI', () => {
       '--headed',
       '--timeout',
       '--settle-timeout',
+      '--concurrency',
+      '--max-retries',
+      '--retry-delay',
+      '--retry-max-delay',
+      '--retry-jitter',
+      '--min-request-interval',
+      '--circuit-breaker-threshold',
     ]) {
       expect(result).toContain(option);
     }
@@ -335,6 +354,13 @@ describe('CLI', () => {
       headless: true,
       timeoutMs: 30000,
       settleTimeoutMs: 5000,
+      concurrency: 2,
+      maxRetries: 3,
+      retryDelayMs: 1000,
+      retryMaxDelayMs: 30000,
+      retryJitterRatio: 0.2,
+      minRequestIntervalMs: 500,
+      circuitBreakerThreshold: 3,
     });
     expect(dependencies.writeBatchReport).toHaveBeenCalledWith(
       './artifacts/batch-report.json',
@@ -353,10 +379,55 @@ describe('CLI', () => {
     }
   });
 
+  it('gives explicit resilience options precedence over environment defaults', async () => {
+    const dependencies = makeDependencies(makeValidationResult());
+    vi.mocked(dependencies.crawlBatch).mockResolvedValueOnce(makeBatchResult());
+    await invokeCli(
+      [
+        'crawl',
+        '--input',
+        'input.txt',
+        '--concurrency',
+        '4',
+        '--max-retries',
+        '1',
+        '--retry-delay',
+        '20',
+        '--retry-max-delay',
+        '200',
+        '--retry-jitter',
+        '0.5',
+        '--min-request-interval',
+        '10',
+        '--circuit-breaker-threshold',
+        '5',
+      ],
+      dependencies,
+    );
+    expect(dependencies.crawlBatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        concurrency: 4,
+        maxRetries: 1,
+        retryDelayMs: 20,
+        retryMaxDelayMs: 200,
+        retryJitterRatio: 0.5,
+        minRequestIntervalMs: 10,
+        circuitBreakerThreshold: 5,
+      }),
+    );
+  });
+
   it.each([
     ['--limit', '0'],
     ['--timeout', '-1'],
     ['--settle-timeout', 'invalid'],
+    ['--concurrency', '21'],
+    ['--max-retries', '-1'],
+    ['--retry-delay', '-1'],
+    ['--retry-max-delay', '10'],
+    ['--retry-jitter', '1.1'],
+    ['--min-request-interval', '-1'],
+    ['--circuit-breaker-threshold', '0'],
   ])(
     'rejects invalid crawl %s before dependencies run',
     async (option, value) => {

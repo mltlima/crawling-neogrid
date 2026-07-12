@@ -37,7 +37,26 @@ export {
 } from './use-cases/crawl-product.js';
 export {
   CrawlBatchUseCase,
+  type BatchBrowserManager,
+  type BatchBrowserManagerFactory,
   type CrawlBatchOptions,
 } from './use-cases/crawl-batch.js';
 export type { BatchLogger } from './ports/batch-logger.js';
 export type { BatchReportWriter } from './ports/batch-report-writer.js';
+export { isRetryableFailure } from './services/retry-policy.js';
+export {
+  calculateRetryDelay,
+  parseRetryAfter,
+} from './services/retry-delay.js';
+export { RequestPacer, type PacerClock } from './services/request-pacer.js';
+export {
+  SafetyCircuitBreaker,
+  type CircuitBreakerReason,
+} from './services/safety-circuit-breaker.js';
+export {
+  CrawlProductWithRetryUseCase,
+  BrowserRecoveryError,
+  type RecoverableBrowser,
+  type RetryExecutionOptions,
+  type RetriedCrawlProduct,
+} from './use-cases/crawl-product-with-retry.js';

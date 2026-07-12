@@ -71,16 +71,20 @@ O comando executa formatação, lint, typecheck, testes offline com cobertura e 
 
 As variáveis são documentadas em `.env.example` e validadas com Zod. Concorrência e retries são configuráveis desde a fundação, embora ainda não sejam usados:
 
-| Variável                 |                     Padrão | Regra                                 |
-| ------------------------ | -------------------------: | ------------------------------------- |
-| `NODE_ENV`               |              `development` | `development`, `test` ou `production` |
-| `LOG_LEVEL`              |                     `info` | nível aceito pelo Pino                |
-| `CRAWLER_CONCURRENCY`    |                        `2` | inteiro entre 1 e 20                  |
-| `CRAWLER_MAX_RETRIES`    |                        `3` | inteiro entre 0 e 10                  |
-| `CRAWLER_RETRY_DELAY_MS` |                     `1000` | inteiro não negativo                  |
-| `BROWSER_HEADLESS`       |                     `true` | `true`/`false` ou `1`/`0`             |
-| `INPUT_PATH`             |                  `./input` | caminho não vazio                     |
-| `OUTPUT_PATH`            | `./artifacts/output.jsonl` | caminho não vazio                     |
+| Variável                            |                     Padrão | Regra                                 |
+| ----------------------------------- | -------------------------: | ------------------------------------- |
+| `NODE_ENV`                          |              `development` | `development`, `test` ou `production` |
+| `LOG_LEVEL`                         |                     `info` | nível aceito pelo Pino                |
+| `CRAWLER_CONCURRENCY`               |                        `2` | inteiro entre 1 e 20                  |
+| `CRAWLER_MAX_RETRIES`               |                        `3` | inteiro entre 0 e 10                  |
+| `CRAWLER_RETRY_DELAY_MS`            |                     `1000` | inteiro não negativo                  |
+| `CRAWLER_RETRY_MAX_DELAY_MS`        |                    `30000` | teto do backoff em ms                 |
+| `CRAWLER_RETRY_JITTER_RATIO`        |                      `0.2` | número entre 0 e 1                    |
+| `CRAWLER_MIN_REQUEST_INTERVAL_MS`   |                      `500` | intervalo global em ms                |
+| `CRAWLER_CIRCUIT_BREAKER_THRESHOLD` |                        `3` | falhas sistêmicas consecutivas, 1–100 |
+| `BROWSER_HEADLESS`                  |                     `true` | `true`/`false` ou `1`/`0`             |
+| `INPUT_PATH`                        |                  `./input` | caminho não vazio                     |
+| `OUTPUT_PATH`                       | `./artifacts/output.jsonl` | caminho não vazio                     |
 
 ## Dependências de produção
 
@@ -123,20 +127,29 @@ Evidências sanitizadas ficam em `artifacts/probes/<run-id>/`; erros têm query 
 
 Testes Playwright usam apenas um servidor em `127.0.0.1`. A execução live autorizada encontrou verificação humana; o probe encerrou sem clicar, resolver ou contornar o desafio. Novas execuções live não fazem parte do CI.
 
-## Pipeline batch sequencial
+## Pipeline batch concorrente e resiliente
 
 ```bash
 node dist/cli/index.js crawl \
   --input ./input/urls.xlsx \
   --report ./artifacts/batch-report.json \
   --limit 10 \
+  --concurrency 2 \
+  --max-retries 3 \
+  --retry-delay 1000 \
+  --retry-max-delay 30000 \
+  --retry-jitter 0.2 \
+  --min-request-interval 500 \
+  --circuit-breaker-threshold 3 \
   --timeout 30000 \
   --settle-timeout 5000
 ```
 
-O lote preserva ordem e duplicidades, abre um processo Chromium e cria contexto e página isolados por registro. O processamento é deliberadamente sequencial e continua após falhas individuais. O terminal recebe somente o resumo JSON; o relatório técnico completo é escrito atomicamente. O batch não captura screenshots nem traces.
+O lote preserva ordem e duplicidades, compartilha normalmente um processo Chromium e cria contexto e página isolados por tentativa. Um worker pool limita os itens ativos sem criar uma promessa por URL; o pacer aplica intervalo global entre tentativas. Retries seletivos usam backoff exponencial limitado, jitter e `Retry-After`, sem repetir bloqueios ou falhas terminais. O terminal recebe somente o resumo JSON; o relatório técnico completo é escrito atomicamente. O batch não captura screenshots nem traces.
 
-No comando `crawl`, o exit code é `0` quando todos os selecionados têm sucesso e não há entrada inválida, `2` quando o lote termina com rejeição ou falha individual e `1` em falha operacional fatal. Concorrência, retries, checkpoint e export final ficam para etapas posteriores.
+Se o browser desconectar, uma recuperação sincronizada cria apenas uma nova geração. Bloqueios ou rate limits consecutivos abrem o circuit breaker, deixam itens em voo terminar e registram os ainda não iniciados separadamente. `ACCESS_BLOCKED` nunca gera retry.
+
+No comando `crawl`, o exit code é `0` quando todos os selecionados têm sucesso e não há entrada inválida, item pulado ou breaker aberto; `2` representa lote concluído com qualquer dessas condições; `1` representa falha operacional fatal sem relatório confiável. Checkpoint e export final ficam para etapas posteriores.
 
 O desenvolvimento batch offline pode continuar com fixtures, doubles e servidor local. A execução live da planilha oficial permanece proibida enquanto não houver acesso normal e autorizado; nenhum lote real de 999 URLs foi executado nesta etapa.
 

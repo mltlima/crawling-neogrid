@@ -16,6 +16,31 @@ export type CrawlOperationalErrorCode = z.infer<
   typeof crawlOperationalErrorCodeSchema
 >;
 
+const countSchema = z.number().int().nonnegative();
+
+export const crawlAttemptSchema = z
+  .object({
+    attemptNumber: z.number().int().positive(),
+    pageState: pageStateSchema,
+    httpStatus: z.number().int().min(100).max(599).nullable(),
+    operationalErrorCode: crawlOperationalErrorCodeSchema.nullable(),
+    durationMs: z.number().nonnegative(),
+    retryable: z.boolean(),
+    retryScheduled: z.boolean(),
+    retryDelayMs: z.number().int().nonnegative().nullable(),
+    browserGeneration: z.number().int().nonnegative(),
+  })
+  .strict()
+  .superRefine((attempt, context) => {
+    if (attempt.retryScheduled !== (attempt.retryDelayMs !== null)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Retry agendado exige delay.',
+      });
+    }
+  });
+export type CrawlAttempt = z.infer<typeof crawlAttemptSchema>;
+
 export const crawlItemResultSchema = z
   .object({
     originalIndex: z.number().int().nonnegative(),
@@ -27,11 +52,39 @@ export const crawlItemResultSchema = z
     product: productOutputSchema,
     durationMs: z.number().nonnegative(),
     operationalErrorCode: crawlOperationalErrorCodeSchema.nullable(),
+    httpStatus: z.number().int().min(100).max(599).nullable(),
+    attempts: z.array(crawlAttemptSchema),
+    attemptCount: countSchema,
+    retryCount: countSchema,
+    recoveredAfterRetry: z.boolean(),
   })
-  .strict();
+  .strict()
+  .superRefine((result, context) => {
+    const continuous = result.attempts.every(
+      (attempt, index) =>
+        attempt.attemptNumber === index + 1 &&
+        (index === result.attempts.length - 1 || attempt.retryScheduled),
+    );
+    const final = result.attempts.at(-1);
+    const consistent =
+      result.attemptCount === result.attempts.length &&
+      result.retryCount === Math.max(0, result.attemptCount - 1) &&
+      continuous &&
+      final !== undefined &&
+      !final.retryScheduled &&
+      final.pageState === result.pageState &&
+      final.httpStatus === result.httpStatus &&
+      final.operationalErrorCode === result.operationalErrorCode &&
+      (!result.recoveredAfterRetry ||
+        (result.retryCount > 0 && result.product.status === 'success'));
+    if (!consistent) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Histórico de tentativas inconsistente.',
+      });
+    }
+  });
 export type CrawlItemResult = z.infer<typeof crawlItemResultSchema>;
-
-const countSchema = z.number().int().nonnegative();
 
 export const crawlBatchSummarySchema = z
   .object({
@@ -50,6 +103,17 @@ export const crawlBatchSummarySchema = z
       countSchema,
     ),
     durationMs: z.number().nonnegative(),
+    configuredConcurrency: z.number().int().min(1).max(20),
+    maxObservedConcurrency: countSchema,
+    totalAttempts: countSchema,
+    retriedRecords: countSchema,
+    retriesPerformed: countSchema,
+    recoveredRecords: countSchema,
+    exhaustedRetries: countSchema,
+    skippedRecords: countSchema,
+    browserRestarts: countSchema,
+    circuitBreakerOpened: z.boolean(),
+    circuitBreakerReason: z.string().min(1).nullable(),
   })
   .strict()
   .superRefine((summary, context) => {
@@ -61,9 +125,11 @@ export const crawlBatchSummarySchema = z
       summary.totalRecords !== summary.validRecords + summary.invalidRecords,
       summary.processedRecords !==
         summary.successfulRecords + summary.failedRecords,
-      summary.selectedRecords !== summary.processedRecords,
+      summary.selectedRecords !==
+        summary.processedRecords + summary.skippedRecords,
       summary.selectedRecords > summary.validRecords,
       summary.successRatePercent !== expectedRate,
+      summary.maxObservedConcurrency > summary.configuredConcurrency,
     ];
     if (inconsistencies.some(Boolean)) {
       context.addIssue({
@@ -73,6 +139,16 @@ export const crawlBatchSummarySchema = z
     }
   });
 export type CrawlBatchSummary = z.infer<typeof crawlBatchSummarySchema>;
+
+export const skippedInputSchema = z
+  .object({
+    originalIndex: z.number().int().nonnegative(),
+    lineNumber: z.number().int().positive().nullable(),
+    merchantId: z.string().uuid(),
+    itemId: z.string().uuid(),
+    reason: z.enum(['CIRCUIT_BREAKER_OPEN']),
+  })
+  .strict();
 
 export const crawlBatchResultSchema = z
   .object({
@@ -84,6 +160,7 @@ export const crawlBatchResultSchema = z
       })
       .strict(),
     invalidRecords: z.array(invalidInputRecordSchema),
+    skippedInputs: z.array(skippedInputSchema),
     results: z.array(crawlItemResultSchema),
     summary: crawlBatchSummarySchema,
   })
@@ -110,9 +187,30 @@ export const crawlBatchResultSchema = z
         index === 0 ||
         result.originalIndex > (batch.results[index - 1]?.originalIndex ?? -1),
     );
+    const totalAttempts = batch.results.reduce(
+      (total, result) => total + result.attemptCount,
+      0,
+    );
+    const retriesPerformed = batch.results.reduce(
+      (total, result) => total + result.retryCount,
+      0,
+    );
+    const exhaustedRetries = batch.results.filter(
+      (result) => result.attempts.at(-1)?.retryable === true,
+    ).length;
     const inconsistent =
       batch.invalidRecords.length !== batch.summary.invalidRecords ||
       batch.results.length !== batch.summary.processedRecords ||
+      batch.skippedInputs.length !== batch.summary.skippedRecords ||
+      totalAttempts !== batch.summary.totalAttempts ||
+      retriesPerformed !== batch.summary.retriesPerformed ||
+      batch.results.filter((result) => result.retryCount > 0).length !==
+        batch.summary.retriedRecords ||
+      batch.results.filter((result) => result.recoveredAfterRetry).length !==
+        batch.summary.recoveredRecords ||
+      exhaustedRetries !== batch.summary.exhaustedRetries ||
+      batch.summary.circuitBreakerOpened !==
+        (batch.summary.circuitBreakerReason !== null) ||
       successfulRecords !== batch.summary.successfulRecords ||
       failedRecords !== batch.summary.failedRecords ||
       !sameCounts(recordsByPageState, batch.summary.recordsByPageState) ||

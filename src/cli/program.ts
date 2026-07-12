@@ -6,6 +6,7 @@ import type {
   ProbeResult,
 } from '../domain/index.js';
 import {
+  appConfig,
   crawlBatch,
   probeProduct,
   validateInputFile,
@@ -37,6 +38,13 @@ export interface CliDependencies {
     readonly headless: boolean;
     readonly timeoutMs: number;
     readonly settleTimeoutMs: number;
+    readonly concurrency: number;
+    readonly maxRetries: number;
+    readonly retryDelayMs: number;
+    readonly retryMaxDelayMs: number;
+    readonly retryJitterRatio: number;
+    readonly minRequestIntervalMs: number;
+    readonly circuitBreakerThreshold: number;
   }) => Promise<CrawlBatchResult>;
   readonly writeBatchReport: (
     filePath: string,
@@ -76,6 +84,13 @@ interface CrawlOptions {
   readonly headed?: boolean;
   readonly timeout: string;
   readonly settleTimeout: string;
+  readonly concurrency: string;
+  readonly maxRetries: string;
+  readonly retryDelay: string;
+  readonly retryMaxDelay: string;
+  readonly retryJitter: string;
+  readonly minRequestInterval: string;
+  readonly circuitBreakerThreshold: string;
 }
 
 function writeJson(program: Command, value: unknown): void {
@@ -157,7 +172,9 @@ export function createCli(
 
   program
     .command('crawl')
-    .description('Processa sequencialmente um arquivo validado, sem retries.')
+    .description(
+      'Processa um arquivo com concorrência limitada e retries seletivos.',
+    )
     .requiredOption(
       '-i, --input <arquivo>',
       'arquivo .xlsx, .csv, .txt ou .json',
@@ -171,11 +188,53 @@ export function createCli(
     .option('--headed', 'exibe o navegador durante o lote')
     .option('--timeout <ms>', 'timeout de navegação em milissegundos', '30000')
     .option('--settle-timeout <ms>', 'espera máxima por sinal terminal', '5000')
+    .option(
+      '--concurrency <quantidade>',
+      'máximo de itens simultâneos',
+      String(appConfig.crawlerConcurrency),
+    )
+    .option(
+      '--max-retries <quantidade>',
+      'tentativas adicionais',
+      String(appConfig.crawlerMaxRetries),
+    )
+    .option(
+      '--retry-delay <ms>',
+      'delay base do backoff',
+      String(appConfig.crawlerRetryDelayMs),
+    )
+    .option(
+      '--retry-max-delay <ms>',
+      'teto do backoff',
+      String(appConfig.crawlerRetryMaxDelayMs),
+    )
+    .option(
+      '--retry-jitter <razão>',
+      'jitter entre 0 e 1',
+      String(appConfig.crawlerRetryJitterRatio),
+    )
+    .option(
+      '--min-request-interval <ms>',
+      'intervalo global entre tentativas',
+      String(appConfig.crawlerMinRequestIntervalMs),
+    )
+    .option(
+      '--circuit-breaker-threshold <quantidade>',
+      'limite de falhas sistêmicas consecutivas',
+      String(appConfig.crawlerCircuitBreakerThreshold),
+    )
     .action(async (options: CrawlOptions) => {
       const limit =
         options.limit === undefined ? undefined : Number(options.limit);
       const timeoutMs = Number(options.timeout);
       const settleTimeoutMs = Number(options.settleTimeout);
+      const concurrency = Number(options.concurrency);
+      const maxRetries = Number(options.maxRetries);
+      const retryDelayMs = Number(options.retryDelay);
+      const retryMaxDelayMs = Number(options.retryMaxDelay);
+      const retryJitterRatio = Number(options.retryJitter);
+      const minRequestIntervalMs = Number(options.minRequestInterval);
+      const circuitBreakerThreshold = Number(options.circuitBreakerThreshold);
       if (limit !== undefined && (!Number.isInteger(limit) || limit <= 0)) {
         throw new Error('--limit deve ser um inteiro positivo.');
       }
@@ -185,18 +244,68 @@ export function createCli(
       if (!Number.isInteger(settleTimeoutMs) || settleTimeoutMs <= 0) {
         throw new Error('--settle-timeout deve ser um inteiro positivo.');
       }
+      if (
+        !Number.isInteger(concurrency) ||
+        concurrency < 1 ||
+        concurrency > 20
+      ) {
+        throw new Error('--concurrency deve ser um inteiro entre 1 e 20.');
+      }
+      if (!Number.isInteger(maxRetries) || maxRetries < 0 || maxRetries > 10) {
+        throw new Error('--max-retries deve ser um inteiro entre 0 e 10.');
+      }
+      if (!Number.isInteger(retryDelayMs) || retryDelayMs < 0) {
+        throw new Error('--retry-delay deve ser um inteiro não negativo.');
+      }
+      if (
+        !Number.isInteger(retryMaxDelayMs) ||
+        retryMaxDelayMs < retryDelayMs
+      ) {
+        throw new Error(
+          '--retry-max-delay deve ser inteiro e maior ou igual ao delay base.',
+        );
+      }
+      if (
+        !Number.isFinite(retryJitterRatio) ||
+        retryJitterRatio < 0 ||
+        retryJitterRatio > 1
+      ) {
+        throw new Error('--retry-jitter deve estar entre 0 e 1.');
+      }
+      if (!Number.isInteger(minRequestIntervalMs) || minRequestIntervalMs < 0) {
+        throw new Error(
+          '--min-request-interval deve ser um inteiro não negativo.',
+        );
+      }
+      if (
+        !Number.isInteger(circuitBreakerThreshold) ||
+        circuitBreakerThreshold < 1
+      ) {
+        throw new Error(
+          '--circuit-breaker-threshold deve ser um inteiro positivo.',
+        );
+      }
       const result = await dependencies.crawlBatch({
         inputPath: options.input,
         ...(limit === undefined ? {} : { limit }),
         headless: options.headed !== true,
         timeoutMs,
         settleTimeoutMs,
+        concurrency,
+        maxRetries,
+        retryDelayMs,
+        retryMaxDelayMs,
+        retryJitterRatio,
+        minRequestIntervalMs,
+        circuitBreakerThreshold,
       });
       await dependencies.writeBatchReport(options.report, result);
       writeJson(program, result.summary);
       dependencies.setExitCode(
         result.summary.invalidRecords === 0 &&
-          result.summary.failedRecords === 0
+          result.summary.failedRecords === 0 &&
+          result.summary.skippedRecords === 0 &&
+          !result.summary.circuitBreakerOpened
           ? 0
           : 2,
       );

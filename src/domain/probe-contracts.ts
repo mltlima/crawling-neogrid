@@ -54,6 +54,7 @@ export interface DomSnapshot {
 export interface PageProbe {
   readonly finalUrl: string;
   readonly httpStatus: number | null;
+  readonly retryAfterMs?: number | null;
   readonly html: string;
   readonly responses: readonly ResponseCandidate[];
   readonly consoleErrors: readonly string[];

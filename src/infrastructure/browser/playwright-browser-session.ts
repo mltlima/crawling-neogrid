@@ -17,6 +17,7 @@ import {
   type BrowserSessionFactory,
   type ManagedBrowserProbeOptions,
   type ManagedBrowserSession,
+  parseRetryAfter,
 } from '../../application/index.js';
 import type {
   DomSnapshot,
@@ -241,6 +242,11 @@ export class PlaywrightManagedBrowserSession implements ManagedBrowserSession {
       return {
         finalUrl: page.url(),
         httpStatus: mainResponse?.status() ?? null,
+        retryAfterMs: parseRetryAfter(
+          mainResponse?.headers()['retry-after'],
+          Date.now(),
+          options.maxRetryAfterMs ?? 30_000,
+        ),
         html,
         responses,
         consoleErrors: sanitizeDiagnosticMessages(consoleErrors),
@@ -274,6 +280,10 @@ export class PlaywrightManagedBrowserSession implements ManagedBrowserSession {
     this.closed = true;
     await this.browser.close().catch(() => undefined);
     this.logger.info('Browser closed');
+  }
+
+  public isConnected(): boolean {
+    return !this.closed && this.browser.isConnected();
   }
 
   private async waitForSettleSignal(

@@ -24,12 +24,24 @@ const summary = {
   recordsBySource: { network: 1 },
   recordsByOperationalError: {},
   durationMs: 10,
+  configuredConcurrency: 1,
+  maxObservedConcurrency: 1,
+  totalAttempts: 1,
+  retriedRecords: 0,
+  retriesPerformed: 0,
+  recoveredRecords: 0,
+  exhaustedRetries: 0,
+  skippedRecords: 0,
+  browserRestarts: 0,
+  circuitBreakerOpened: false,
+  circuitBreakerReason: null,
 };
 
 const result = {
   runId: 'batch-1',
   source: { fileName: 'input.xlsx', format: 'xlsx' },
   invalidRecords: [],
+  skippedInputs: [],
   results: [
     {
       originalIndex: 0,
@@ -49,6 +61,23 @@ const result = {
       },
       durationMs: 5,
       operationalErrorCode: null,
+      httpStatus: 200,
+      attempts: [
+        {
+          attemptNumber: 1,
+          pageState: 'PRODUCT_FOUND',
+          httpStatus: 200,
+          operationalErrorCode: null,
+          durationMs: 5,
+          retryable: false,
+          retryScheduled: false,
+          retryDelayMs: null,
+          browserGeneration: 0,
+        },
+      ],
+      attemptCount: 1,
+      retryCount: 0,
+      recoveredAfterRetry: false,
     },
   ],
   summary,
@@ -130,6 +159,7 @@ describe('crawl batch contracts', () => {
       successfulRecords: 2,
       recordsByPageState: { PRODUCT_FOUND: 2 },
       recordsBySource: { network: 2 },
+      totalAttempts: 2,
     };
     expect(() =>
       crawlBatchResultSchema.parse({
@@ -138,6 +168,32 @@ describe('crawl batch contracts', () => {
         summary: twoResultSummary,
       }),
     ).toThrow('não corresponde');
+  });
+
+  it('rejects an inconsistent attempt history', () => {
+    const item = result.results[0];
+    if (item === undefined) {
+      throw new Error('Fixture ausente.');
+    }
+    expect(() =>
+      crawlBatchResultSchema.parse({
+        ...result,
+        results: [{ ...item, attemptCount: 2 }],
+      }),
+    ).toThrow('tentativas inconsistente');
+    expect(() =>
+      crawlBatchResultSchema.parse({
+        ...result,
+        results: [
+          {
+            ...item,
+            attempts: [
+              { ...item.attempts[0], retryScheduled: true, retryDelayMs: null },
+            ],
+          },
+        ],
+      }),
+    ).toThrow();
   });
 
   it.each([

@@ -14,6 +14,7 @@ function report(): CrawlBatchResult {
     runId: 'run-safe',
     source: { fileName: 'input.txt', format: 'txt' },
     invalidRecords: [],
+    skippedInputs: [],
     results: [],
     summary: {
       totalRecords: 0,
@@ -28,6 +29,17 @@ function report(): CrawlBatchResult {
       recordsBySource: {},
       recordsByOperationalError: {},
       durationMs: 1,
+      configuredConcurrency: 1,
+      maxObservedConcurrency: 0,
+      totalAttempts: 0,
+      retriedRecords: 0,
+      retriesPerformed: 0,
+      recoveredRecords: 0,
+      exhaustedRetries: 0,
+      skippedRecords: 0,
+      browserRestarts: 0,
+      circuitBreakerOpened: false,
+      circuitBreakerReason: null,
     },
   };
 }

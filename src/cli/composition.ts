@@ -34,7 +34,9 @@ import type {
 import {
   PlaywrightArtifactsWriter,
   PlaywrightBrowserSessionFactory,
+  RecoverableBrowserManager,
 } from '../infrastructure/browser/index.js';
+import { loadConfig } from '../config/index.js';
 import { createLogger } from '../observability/index.js';
 
 const logger = createLogger({ level: 'info' }, destination(2));
@@ -48,6 +50,7 @@ const validateInputUseCase = new ValidateInputUseCase(
   new NodeInputFileInspector(),
 );
 const browserFactory = new PlaywrightBrowserSessionFactory(logger);
+const config = loadConfig();
 const extractionPipeline = new IfoodProductExtractor([
   new NetworkExtractor(),
   new EmbeddedDataExtractor(),
@@ -65,7 +68,10 @@ const probeProductUseCase = new ProbeProductUseCase(
 );
 const crawlBatchUseCase = new CrawlBatchUseCase(
   validateInputUseCase,
-  browserFactory,
+  {
+    create: (headless): RecoverableBrowserManager =>
+      new RecoverableBrowserManager(browserFactory, headless),
+  },
   crawlProductUseCase,
   logger,
   randomUUID,
@@ -94,7 +100,11 @@ export async function probeProduct(options: {
   readonly artifactsDirectory: string;
   readonly trace: boolean;
 }): Promise<ProbeResult> {
-  return probeProductUseCase.execute({ ...options, maxJsonBytes: 1_000_000 });
+  return probeProductUseCase.execute({
+    ...options,
+    maxJsonBytes: 1_000_000,
+    maxRetryAfterMs: config.crawlerRetryMaxDelayMs,
+  });
 }
 
 export async function crawlBatch(options: {
@@ -103,9 +113,18 @@ export async function crawlBatch(options: {
   readonly headless: boolean;
   readonly timeoutMs: number;
   readonly settleTimeoutMs: number;
+  readonly concurrency: number;
+  readonly maxRetries: number;
+  readonly retryDelayMs: number;
+  readonly retryMaxDelayMs: number;
+  readonly retryJitterRatio: number;
+  readonly minRequestIntervalMs: number;
+  readonly circuitBreakerThreshold: number;
 }): Promise<CrawlBatchResult> {
   return crawlBatchUseCase.execute({ ...options, maxJsonBytes: 1_000_000 });
 }
+
+export { config as appConfig };
 
 export async function writeBatchReport(
   filePath: string,

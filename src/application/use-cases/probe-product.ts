@@ -18,6 +18,7 @@ export interface ProbeProductOptions {
   readonly artifactsDirectory: string;
   readonly trace: boolean;
   readonly maxJsonBytes: number;
+  readonly maxRetryAfterMs?: number;
 }
 
 export class ProbeProductUseCase {
@@ -55,6 +56,9 @@ export class ProbeProductUseCase {
         trace: options.trace,
         captureScreenshot: true,
         maxJsonBytes: options.maxJsonBytes,
+        ...(options.maxRetryAfterMs === undefined
+          ? {}
+          : { maxRetryAfterMs: options.maxRetryAfterMs }),
       });
       const result = probeResultSchema.parse({
         runId,

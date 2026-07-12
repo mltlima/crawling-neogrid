@@ -65,7 +65,7 @@ describe('Playwright probe against a local server', () => {
       } else if (path === '/forbidden') {
         response.writeHead(403).end('forbidden');
       } else if (path === '/rate') {
-        response.writeHead(429).end('rate limited');
+        response.writeHead(429, { 'retry-after': '1' }).end('rate limited');
       } else if (path === '/javascript-error') {
         response.end(
           '<script>setTimeout(() => { throw new Error("local boom") }, 0)</script>',
@@ -183,6 +183,12 @@ describe('Playwright probe against a local server', () => {
     );
     expect(candidate?.summary.payloadTruncated).toBe(true);
     expect(candidate?.jsonPayload).toBeNull();
+  });
+
+  it('captures only sanitized Retry-After milliseconds from a local 429', async () => {
+    const rateLimited = await probe('/rate');
+    expect(rateLimited.httpStatus).toBe(429);
+    expect(rateLimited.retryAfterMs).toBe(1_000);
   });
 
   it('reuses the managed browser while isolating cookies between probes', async () => {

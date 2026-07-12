@@ -95,6 +95,23 @@ export class CrawlProductUseCase implements CrawlProductCollector {
           product,
           durationMs: Math.max(0, this.now() - startedAt),
           operationalErrorCode: null,
+          httpStatus: page.httpStatus,
+          attempts: [
+            {
+              attemptNumber: 1,
+              pageState,
+              httpStatus: page.httpStatus,
+              operationalErrorCode: null,
+              durationMs: Math.max(0, this.now() - startedAt),
+              retryable: false,
+              retryScheduled: false,
+              retryDelayMs: null,
+              browserGeneration: 0,
+            },
+          ],
+          attemptCount: 1,
+          retryCount: 0,
+          recoveredAfterRetry: false,
         }),
         page,
       };
@@ -135,6 +152,23 @@ export class CrawlProductUseCase implements CrawlProductCollector {
       },
       durationMs: Math.max(0, this.now() - startedAt),
       operationalErrorCode,
+      httpStatus: null,
+      attempts: [
+        {
+          attemptNumber: 1,
+          pageState: 'UNKNOWN_PAGE_STATE',
+          httpStatus: null,
+          operationalErrorCode,
+          durationMs: Math.max(0, this.now() - startedAt),
+          retryable: false,
+          retryScheduled: false,
+          retryDelayMs: null,
+          browserGeneration: 0,
+        },
+      ],
+      attemptCount: 1,
+      retryCount: 0,
+      recoveredAfterRetry: false,
     });
   }
 }

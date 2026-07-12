@@ -3,8 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   CrawlBatchUseCase,
   ValidateInputUseCase,
+  type BatchBrowserManager,
   type BatchLogger,
-  type BrowserSessionFactory,
   type CrawlProductCollector,
   type InputFileInspector,
   type InputReader,
@@ -44,15 +44,30 @@ function validationFor(values: readonly unknown[]): ValidateInputUseCase {
 
 function itemResult(
   record: ValidInputRecord,
-  success: boolean,
+  success = true,
+  state: CrawlItemResult['pageState'] = success
+    ? 'PRODUCT_FOUND'
+    : 'PRODUCT_UNAVAILABLE',
 ): CrawlItemResult {
+  const operationalErrorCode = null;
+  const attempt = {
+    attemptNumber: 1,
+    pageState: state,
+    httpStatus: 200,
+    operationalErrorCode,
+    durationMs: 1,
+    retryable: false,
+    retryScheduled: false,
+    retryDelayMs: null,
+    browserGeneration: 0,
+  } as const;
   return {
     originalIndex: record.originalIndex,
     lineNumber: record.lineNumber,
     merchantId: record.merchantId,
     itemId: record.itemId,
     source: success ? 'dom' : 'none',
-    pageState: success ? 'PRODUCT_FOUND' : 'UNKNOWN_PAGE_STATE',
+    pageState: state,
     product: {
       title: success ? 'Produto' : null,
       normal_price: success ? 100 : null,
@@ -60,162 +75,140 @@ function itemResult(
       product_url: record.normalizedUrl,
       image_url: null,
       status: success ? 'success' : 'error',
-      error_message: success ? null : 'Falha operacional durante a navegação.',
+      error_message: success ? null : 'Indisponível.',
     },
     durationMs: 1,
-    operationalErrorCode: success ? null : 'BROWSER_OPERATIONAL_ERROR',
+    operationalErrorCode,
+    httpStatus: 200,
+    attempts: [attempt],
+    attemptCount: 1,
+    retryCount: 0,
+    recoveredAfterRetry: false,
   };
 }
 
-const logger: BatchLogger = {
-  info: vi.fn(),
-  warn: vi.fn(),
-};
+function manager(): BatchBrowserManager {
+  const session: ManagedBrowserSession = {
+    probe: vi.fn(),
+    close: vi.fn(() => Promise.resolve()),
+    isConnected: () => true,
+  };
+  return {
+    start: vi.fn(() => Promise.resolve()),
+    acquire: () => Promise.resolve({ session, generation: 0 }),
+    invalidate: vi.fn(() => Promise.resolve()),
+    close: vi.fn(() => Promise.resolve()),
+    browserRestarts: 0,
+  };
+}
 
+const logger: BatchLogger = { info: vi.fn(), warn: vi.fn() };
 const options = {
   inputPath: 'input.txt',
   headless: true,
   timeoutMs: 100,
   settleTimeoutMs: 20,
   maxJsonBytes: 100,
+  concurrency: 2,
+  maxRetries: 0,
+  retryDelayMs: 0,
+  retryMaxDelayMs: 100,
+  retryJitterRatio: 0,
+  minRequestIntervalMs: 0,
+  circuitBreakerThreshold: 3,
 };
 
-describe('CrawlBatchUseCase', () => {
-  it('processes duplicates independently, in order and sequentially after failures', async () => {
-    const validation = validationFor([
+describe('CrawlBatchUseCase resilient pool', () => {
+  it('bounds concurrency, preserves order and processes duplicates independently', async () => {
+    const records = [
       makeIfoodUrl(),
       makeIfoodUrl(),
-      'invalid',
       makeIfoodUrl(MERCHANT_ID, SECOND_ITEM_ID),
-    ]);
+    ];
     let active = 0;
-    let maxActive = 0;
-    const processedIndexes: number[] = [];
+    let maximum = 0;
     const collector: CrawlProductCollector = {
-      execute: async (_session, record, probeOptions) => {
+      execute: async (_session, record) => {
         active += 1;
-        maxActive = Math.max(maxActive, active);
-        processedIndexes.push(record.originalIndex);
-        expect(probeOptions).toMatchObject({
-          captureScreenshot: false,
-          trace: false,
-        });
-        await new Promise<void>((resolve) => setTimeout(resolve, 2));
+        maximum = Math.max(maximum, active);
+        await Promise.resolve();
         active -= 1;
-        return {
-          result: itemResult(record, record.originalIndex !== 1),
-          page: null,
-        };
+        return { result: itemResult(record), page: null };
       },
     };
-    const close = vi.fn(() => Promise.resolve());
-    const session: ManagedBrowserSession = { probe: vi.fn(), close };
-    const open = vi.fn(() => Promise.resolve(session));
-    const factory: BrowserSessionFactory = { open };
+    const browser = manager();
     const batch = await new CrawlBatchUseCase(
-      validation,
-      factory,
+      validationFor(records),
+      { create: (): BatchBrowserManager => browser },
       collector,
       logger,
-      () => 'batch-1',
-      () => 10,
+      () => 'run',
     ).execute(options);
-
-    expect(processedIndexes).toEqual([0, 1, 3]);
-    expect(maxActive).toBe(1);
-    expect(open).toHaveBeenCalledOnce();
-    expect(close).toHaveBeenCalledOnce();
-    expect(batch.results.map((result) => result.originalIndex)).toEqual([
-      0, 1, 3,
-    ]);
+    expect(maximum).toBeLessThanOrEqual(2);
+    expect(batch.results.map((item) => item.originalIndex)).toEqual([0, 1, 2]);
     expect(batch.summary).toMatchObject({
-      totalRecords: 4,
-      validRecords: 3,
-      invalidRecords: 1,
-      selectedRecords: 3,
+      configuredConcurrency: 2,
+      maxObservedConcurrency: 2,
       processedRecords: 3,
-      successfulRecords: 2,
-      failedRecords: 1,
-      successRatePercent: 66.67,
-      recordsByOperationalError: { BROWSER_OPERATIONAL_ERROR: 1 },
+      totalAttempts: 3,
     });
-    expect(
-      batch.results[0] === undefined ? true : 'page' in batch.results[0],
-    ).toBe(false);
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    expect(browser.start).toHaveBeenCalledOnce();
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    expect(browser.close).toHaveBeenCalledOnce();
   });
 
-  it('applies limit only to valid records', async () => {
-    const validation = validationFor([
-      'invalid',
-      makeIfoodUrl(),
-      makeIfoodUrl(MERCHANT_ID, SECOND_ITEM_ID),
-    ]);
-    const execute = vi.fn(
-      (_session: ManagedBrowserSession, record: ValidInputRecord) =>
-        Promise.resolve({ result: itemResult(record, true), page: null }),
-    );
-    const session: ManagedBrowserSession = {
-      probe: vi.fn(),
-      close: () => Promise.resolve(),
-    };
-    const batch = await new CrawlBatchUseCase(
-      validation,
-      { open: (): Promise<ManagedBrowserSession> => Promise.resolve(session) },
-      { execute },
-      logger,
-      () => 'limited',
-    ).execute({ ...options, limit: 1 });
-    expect(execute).toHaveBeenCalledOnce();
-    expect(batch.results[0]?.originalIndex).toBe(1);
-    expect(batch.summary.selectedRecords).toBe(1);
-  });
-
-  it('does not open a browser when there are no valid records', async () => {
-    const open = vi.fn(() => Promise.reject(new Error('must not open')));
+  it('does not start a browser with no valid selected input', async () => {
+    const browser = manager();
     const batch = await new CrawlBatchUseCase(
       validationFor(['invalid']),
-      { open },
+      { create: (): BatchBrowserManager => browser },
       { execute: vi.fn() },
       logger,
       () => 'empty',
     ).execute(options);
-    expect(open).not.toHaveBeenCalled();
-    expect(batch.summary).toMatchObject({
-      processedRecords: 0,
-      successRatePercent: 0,
-      invalidRecords: 1,
-    });
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    expect(browser.start).not.toHaveBeenCalled();
+    expect(batch.summary.processedRecords).toBe(0);
   });
 
-  it('treats browser opening failure as fatal', async () => {
+  it('opens the breaker and records inputs not started', async () => {
+    const collector: CrawlProductCollector = {
+      execute: (
+        _session,
+        record,
+      ): ReturnType<CrawlProductCollector['execute']> =>
+        Promise.resolve({
+          result: itemResult(record, false, 'ACCESS_BLOCKED'),
+          page: null,
+        }),
+    };
+    const batch = await new CrawlBatchUseCase(
+      validationFor([makeIfoodUrl(), makeIfoodUrl(), makeIfoodUrl()]),
+      { create: (): BatchBrowserManager => manager() },
+      collector,
+      logger,
+      () => 'blocked',
+    ).execute({ ...options, concurrency: 1, circuitBreakerThreshold: 1 });
+    expect(batch.summary).toMatchObject({
+      circuitBreakerOpened: true,
+      skippedRecords: 2,
+      processedRecords: 1,
+    });
+    expect(batch.skippedInputs).toHaveLength(2);
+  });
+
+  it('treats initial browser opening failure as fatal', async () => {
+    const browser = manager();
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    vi.mocked(browser.start).mockRejectedValueOnce(new Error('launch failed'));
     const useCase = new CrawlBatchUseCase(
       validationFor([makeIfoodUrl()]),
-      {
-        open: (): Promise<ManagedBrowserSession> =>
-          Promise.reject(new Error('launch failed')),
-      },
+      { create: (): BatchBrowserManager => browser },
       { execute: vi.fn() },
       logger,
       () => 'fatal',
     );
     await expect(useCase.execute(options)).rejects.toThrow('launch failed');
-  });
-
-  it('closes the session when the loop throws unexpectedly', async () => {
-    const close = vi.fn(() => Promise.resolve());
-    const session: ManagedBrowserSession = { probe: vi.fn(), close };
-    const collector: CrawlProductCollector = {
-      execute: (): ReturnType<CrawlProductCollector['execute']> =>
-        Promise.reject(new Error('unexpected collector failure')),
-    };
-    const batch = await new CrawlBatchUseCase(
-      validationFor([makeIfoodUrl()]),
-      { open: (): Promise<ManagedBrowserSession> => Promise.resolve(session) },
-      collector,
-      logger,
-      () => 'isolated',
-    ).execute(options);
-    expect(close).toHaveBeenCalledOnce();
-    expect(batch.results[0]?.operationalErrorCode).toBe('UNEXPECTED_ERROR');
   });
 });

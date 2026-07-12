@@ -68,8 +68,16 @@ Antes de ler um body, a sessão rejeita imagens, fontes, CSS, mídia, content ty
 
 Evidências persistem apenas resumos de respostas, diagnósticos sanitizados e limitados, resultado, screenshot condicional e trace opcional. Payloads, headers, cookies e storages não são gravados. Trace fica desligado por padrão e é tratado como material potencialmente sensível que exige revisão antes de qualquer entrega.
 
-## Pipeline batch sequencial
+## Pipeline batch
 
-`CrawlBatchUseCase` valida a entrada, ordena e limita apenas registros válidos, abre uma única sessão de browser e aguarda cada coleta em um loop sequencial. Contexto e página novos impedem compartilhamento de cookies e storage. Falhas individuais viram produtos de erro seguros; falha ao abrir o browser permanece fatal. Objetos pesados da página não integram o resultado.
+`CrawlBatchUseCase` valida a entrada, ordena e limita apenas registros válidos e coordena um pool limitado de workers. Contexto e página novos impedem compartilhamento de cookies e storage. Falhas individuais viram produtos de erro seguros; falha ao abrir o browser permanece fatal. Objetos pesados da página não integram o resultado.
 
-O resultado técnico separa metadados operacionais do objeto strict de sete campos. `BatchReportWriter` grava esse resultado em JSON UTF-8 por temporário e rename no mesmo diretório; stdout recebe somente o resumo. Screenshots e traces ficam desativados no batch. O desenho ainda não contém concorrência, retry, checkpoint ou export final.
+O resultado técnico separa metadados operacionais do objeto strict de sete campos. `BatchReportWriter` grava esse resultado em JSON UTF-8 por temporário e rename no mesmo diretório; stdout recebe somente o resumo. Screenshots e traces ficam desativados no batch. Checkpoint e export final ainda não fazem parte do desenho.
+
+## Concorrência e resiliência
+
+Na Etapa 5, o loop sequencial evoluiu para um número limitado de workers que retiram registros de um cursor compartilhado. Apenas a pequena lista de workers é materializada; retries permanecem no mesmo slot. Um pacer FIFO compartilhado controla todos os inícios de tentativa, e os resultados são ordenados novamente por `originalIndex`.
+
+A política centralizada repete timeout, 429, HTTP 5xx e desconexão real do browser. Backoff exponencial, teto, jitter e `Retry-After` são calculados com relógio e aleatoriedade injetáveis. Estados terminais, especialmente `ACCESS_BLOCKED`, nunca repetem. O browser é gerenciado por geração: invalidações concorrentes da mesma geração compartilham uma recuperação.
+
+O circuit breaker abre após bloqueios ou rate limits esgotados consecutivos, ou falha de recuperação. Itens em voo terminam; os demais viram `skippedInputs`, sem produto fictício. Históricos guardam somente metadados sanitizados de tentativas. Checkpoint, persistência incremental e export final continuam adiados.

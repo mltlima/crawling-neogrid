@@ -10,6 +10,7 @@ import {
   type ValidInputRecord,
 } from '../../domain/index.js';
 import type { BatchLogger } from '../ports/batch-logger.js';
+import { InputOperationalError } from '../errors/input-operational-error.js';
 import { RequestPacer } from '../services/request-pacer.js';
 import { SafetyCircuitBreaker } from '../services/safety-circuit-breaker.js';
 import {
@@ -47,6 +48,7 @@ export interface CrawlBatchOptions {
   readonly circuitBreakerThreshold: number;
   readonly confirmedResults?: readonly CrawlItemResult[];
   readonly onResultConfirmed?: (result: CrawlItemResult) => Promise<void>;
+  readonly shouldStop?: () => boolean;
 }
 
 export class CrawlBatchUseCase {
@@ -107,7 +109,11 @@ export class CrawlBatchUseCase {
           this.runWorker(
             workerIndex + 1,
             () => {
-              if (breaker.opened || cursor >= selected.length) {
+              if (
+                breaker.opened ||
+                options.shouldStop?.() === true ||
+                cursor >= selected.length
+              ) {
                 return null;
               }
               const record = selected[cursor];
@@ -168,6 +174,9 @@ export class CrawlBatchUseCase {
                   );
                 }
               } catch (error: unknown) {
+                if (error instanceof InputOperationalError) {
+                  throw error;
+                }
                 if (error instanceof BrowserRecoveryError) {
                   breaker.openForRecoveryFailure();
                   this.logger.warn(

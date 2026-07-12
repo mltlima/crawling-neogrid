@@ -53,7 +53,8 @@ describe('classifyPageState', () => {
     [probe({ httpStatus: 429 }), 'RATE_LIMITED'],
     [
       probe({
-        finalUrl: 'https://www.ifood.com.br/?item=22222222-2222-4222-8222-222222222222',
+        finalUrl:
+          'https://www.ifood.com.br/?item=22222222-2222-4222-8222-222222222222',
       }),
       'REDIRECTED_TO_HOME',
     ],

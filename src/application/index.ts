@@ -54,6 +54,7 @@ export {
   parseRetryAfter,
 } from './services/retry-delay.js';
 export { RequestPacer, type PacerClock } from './services/request-pacer.js';
+export { ShutdownController } from './services/shutdown-controller.js';
 export {
   SafetyCircuitBreaker,
   type CircuitBreakerReason,

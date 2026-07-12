@@ -28,6 +28,7 @@ export interface CheckpointReplay {
 
 export class FilesystemCheckpointStore {
   private appendTail: Promise<void> = Promise.resolve();
+  private appendCount = 0;
   public constructor(
     private readonly directory: string,
     private readonly syncEvery = 1,
@@ -90,7 +91,8 @@ export class FilesystemCheckpointStore {
       const handle = await open(this.resultsPath, 'a');
       try {
         await handle.writeFile(line, 'utf8');
-        if (this.syncEvery === 1) {
+        this.appendCount += 1;
+        if (this.appendCount % this.syncEvery === 0) {
           await handle.sync();
         }
       } finally {
@@ -107,6 +109,10 @@ export class FilesystemCheckpointStore {
       `${JSON.stringify(checkpointEventSchema.parse(event))}\n`,
       'utf8',
     );
+  }
+
+  public async flush(): Promise<void> {
+    await this.appendTail;
   }
 
   public async replay(): Promise<CheckpointReplay> {
@@ -152,7 +158,18 @@ export class FilesystemCheckpointStore {
   }
 
   public async acquireLock(runId: string, forceUnlock = false): Promise<void> {
+    await mkdir(this.directory, { recursive: true });
     if (forceUnlock) {
+      await this.readManifest();
+      try {
+        JSON.parse(await readFile(this.lockPath, 'utf8')) as unknown;
+      } catch (error: unknown) {
+        throw new InputOperationalError(
+          'CHECKPOINT_LOCKED',
+          'Lock residual inválido; desbloqueio recusado.',
+          { cause: error },
+        );
+      }
       await rm(this.lockPath, { force: true });
     }
     try {

@@ -5,3 +5,4 @@ export {
   CsvProductExporter,
   JsonlProductExporter,
 } from './product-exporters.js';
+export { OutputVerifier } from './output-verifier.js';

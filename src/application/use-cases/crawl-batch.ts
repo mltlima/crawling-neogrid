@@ -45,6 +45,8 @@ export interface CrawlBatchOptions {
   readonly retryJitterRatio: number;
   readonly minRequestIntervalMs: number;
   readonly circuitBreakerThreshold: number;
+  readonly confirmedResults?: readonly CrawlItemResult[];
+  readonly onResultConfirmed?: (result: CrawlItemResult) => Promise<void>;
 }
 
 export class CrawlBatchUseCase {
@@ -67,10 +69,17 @@ export class CrawlBatchUseCase {
     const ordered = [...validation.validRecords].sort(
       (a, b) => a.originalIndex - b.originalIndex,
     );
-    const selected =
+    const selectedAll =
       options.limit === undefined ? ordered : ordered.slice(0, options.limit);
-    const results: CrawlItemResult[] = [];
-    const startedIndexes = new Set<number>();
+    const confirmed = options.confirmedResults ?? [];
+    const confirmedIndexes = new Set(
+      confirmed.map((result) => result.originalIndex),
+    );
+    const selected = selectedAll.filter(
+      (record) => !confirmedIndexes.has(record.originalIndex),
+    );
+    const results: CrawlItemResult[] = [...confirmed];
+    const startedIndexes = new Set<number>(confirmedIndexes);
     const breaker = new SafetyCircuitBreaker(options.circuitBreakerThreshold);
     let cursor = 0;
     let active = 0;
@@ -85,7 +94,7 @@ export class CrawlBatchUseCase {
     this.logger.info(
       {
         runId,
-        selectedRecords: selected.length,
+        selectedRecords: selectedAll.length,
         concurrency: options.concurrency,
       },
       'Batch started',
@@ -128,6 +137,7 @@ export class CrawlBatchUseCase {
                   random: this.random,
                   sleep: this.sleep,
                 });
+                await options.onResultConfirmed?.(retried.result);
                 results.push(retried.result);
                 for (const attempt of retried.result.attempts) {
                   this.logger.info(
@@ -169,7 +179,9 @@ export class CrawlBatchUseCase {
                     'Browser recovery failed and circuit breaker opened',
                   );
                 }
-                results.push(this.unexpectedFailure(record));
+                const failure = this.unexpectedFailure(record);
+                await options.onResultConfirmed?.(failure);
+                results.push(failure);
               } finally {
                 active -= 1;
               }
@@ -183,7 +195,7 @@ export class CrawlBatchUseCase {
     }
 
     results.sort((a, b) => a.originalIndex - b.originalIndex);
-    const skippedInputs = selected
+    const skippedInputs = selectedAll
       .filter((record) => !startedIndexes.has(record.originalIndex))
       .map((record) => ({
         originalIndex: record.originalIndex,
@@ -199,7 +211,7 @@ export class CrawlBatchUseCase {
       totalRecords: validation.summary.totalRecords,
       validRecords: validation.summary.validRecords,
       invalidRecords: validation.summary.invalidRecords,
-      selectedRecords: selected.length,
+      selectedRecords: selectedAll.length,
       processedRecords: results.length,
       successfulRecords,
       failedRecords: results.length - successfulRecords,

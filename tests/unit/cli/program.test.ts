@@ -361,6 +361,12 @@ describe('CLI', () => {
       retryJitterRatio: 0.2,
       minRequestIntervalMs: 500,
       circuitBreakerThreshold: 3,
+      checkpointDir: './artifacts/checkpoints/default',
+      resume: false,
+      forceUnlock: false,
+      syncEvery: 1,
+      outputJsonl: './artifacts/products.jsonl',
+      outputCsv: './artifacts/products.csv',
     });
     expect(dependencies.writeBatchReport).toHaveBeenCalledWith(
       './artifacts/batch-report.json',

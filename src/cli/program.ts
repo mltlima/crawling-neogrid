@@ -45,6 +45,12 @@ export interface CliDependencies {
     readonly retryJitterRatio: number;
     readonly minRequestIntervalMs: number;
     readonly circuitBreakerThreshold: number;
+    readonly checkpointDir: string;
+    readonly resume: boolean;
+    readonly forceUnlock: boolean;
+    readonly syncEvery: number;
+    readonly outputJsonl: string;
+    readonly outputCsv: string;
   }) => Promise<CrawlBatchResult>;
   readonly writeBatchReport: (
     filePath: string,
@@ -59,7 +65,7 @@ const defaultDependencies: CliDependencies = {
     process.exitCode = exitCode;
   },
   probeProduct,
-  crawlBatch,
+  crawlBatch: crawlBatch as CliDependencies['crawlBatch'],
   writeBatchReport,
 };
 
@@ -91,6 +97,12 @@ interface CrawlOptions {
   readonly retryJitter: string;
   readonly minRequestInterval: string;
   readonly circuitBreakerThreshold: string;
+  readonly checkpointDir: string;
+  readonly resume?: boolean;
+  readonly forceUnlock?: boolean;
+  readonly syncEvery: string;
+  readonly outputJsonl: string;
+  readonly outputCsv: string;
 }
 
 function writeJson(program: Command, value: unknown): void {
@@ -223,6 +235,28 @@ export function createCli(
       'limite de falhas sistêmicas consecutivas',
       String(appConfig.crawlerCircuitBreakerThreshold),
     )
+    .option(
+      '--checkpoint-dir <diretório>',
+      'diretório do checkpoint',
+      './artifacts/checkpoints/default',
+    )
+    .option('--resume', 'retoma checkpoint existente')
+    .option('--force-unlock', 'remove lock residual')
+    .option(
+      '--sync-every <quantidade>',
+      'sincroniza o journal a cada resultado',
+      '1',
+    )
+    .option(
+      '--output-jsonl <arquivo>',
+      'arquivo final JSONL',
+      './artifacts/products.jsonl',
+    )
+    .option(
+      '--output-csv <arquivo>',
+      'arquivo final CSV',
+      './artifacts/products.csv',
+    )
     .action(async (options: CrawlOptions) => {
       const limit =
         options.limit === undefined ? undefined : Number(options.limit);
@@ -235,6 +269,7 @@ export function createCli(
       const retryJitterRatio = Number(options.retryJitter);
       const minRequestIntervalMs = Number(options.minRequestInterval);
       const circuitBreakerThreshold = Number(options.circuitBreakerThreshold);
+      const syncEvery = Number(options.syncEvery);
       if (limit !== undefined && (!Number.isInteger(limit) || limit <= 0)) {
         throw new Error('--limit deve ser um inteiro positivo.');
       }
@@ -285,6 +320,9 @@ export function createCli(
           '--circuit-breaker-threshold deve ser um inteiro positivo.',
         );
       }
+      if (!Number.isInteger(syncEvery) || syncEvery < 1) {
+        throw new Error('--sync-every deve ser um inteiro positivo.');
+      }
       const result = await dependencies.crawlBatch({
         inputPath: options.input,
         ...(limit === undefined ? {} : { limit }),
@@ -298,6 +336,12 @@ export function createCli(
         retryJitterRatio,
         minRequestIntervalMs,
         circuitBreakerThreshold,
+        checkpointDir: options.checkpointDir,
+        resume: options.resume === true,
+        forceUnlock: options.forceUnlock === true,
+        syncEvery,
+        outputJsonl: options.outputJsonl,
+        outputCsv: options.outputCsv,
       });
       await dependencies.writeBatchReport(options.report, result);
       writeJson(program, result.summary);

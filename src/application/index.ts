@@ -41,6 +41,11 @@ export {
   type BatchBrowserManagerFactory,
   type CrawlBatchOptions,
 } from './use-cases/crawl-batch.js';
+export { ResumableCrawlUseCase } from './use-cases/resumable-crawl.js';
+export type {
+  CheckpointStorePort,
+  ResumableCrawlOptions,
+} from './use-cases/resumable-crawl.js';
 export type { BatchLogger } from './ports/batch-logger.js';
 export type { BatchReportWriter } from './ports/batch-report-writer.js';
 export { isRetryableFailure } from './services/retry-policy.js';

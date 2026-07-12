@@ -129,6 +129,10 @@ Testes Playwright usam apenas um servidor em `127.0.0.1`. A execução live auto
 
 ## Pipeline batch concorrente e resiliente
 
+## Checkpoint e retomada
+
+O comando `crawl` cria checkpoint em `./artifacts/checkpoints/default` e só promove `products.jsonl` e `products.csv` após concluir todos os itens selecionados. Use `--resume` para retomar esse diretório; o arquivo de entrada precisa ter o mesmo hash. `--force-unlock` remove apenas um lock residual e nunca apaga journals.
+
 ```bash
 node dist/cli/index.js crawl \
   --input ./input/urls.xlsx \

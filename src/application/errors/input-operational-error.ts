@@ -8,7 +8,10 @@ export type InputOperationalErrorCode =
   | 'REPORT_WRITE_FAILED'
   | 'PROBE_FAILED'
   | 'ARTIFACT_WRITE_FAILED'
-  | 'BATCH_REPORT_WRITE_FAILED';
+  | 'BATCH_REPORT_WRITE_FAILED'
+  | 'CHECKPOINT_FAILED'
+  | 'CHECKPOINT_LOCKED'
+  | 'EXPORT_FAILED';
 
 export class InputOperationalError extends Error {
   public readonly code: InputOperationalErrorCode;

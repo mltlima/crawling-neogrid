@@ -8,10 +8,27 @@ artifacts/*
 !artifacts/.gitkeep
 evidence/*
 !evidence/.gitkeep
+!evidence/execution/
+!evidence/execution/**
+!evidence/performance/
+!evidence/performance/offline-benchmark.json
+!evidence/quality/
+!evidence/quality/npm-audit.json
+!evidence/quality/test-summary.md
+!evidence/quality/sbom.spdx.json
 deliverables/*
 !deliverables/.gitkeep
+!deliverables/products.jsonl
+!deliverables/products.csv
+!deliverables/batch-report.json
+!deliverables/artifacts-manifest.json
+!deliverables/output-verification.json
+!deliverables/execution-summary.json
+!deliverables/execution-report.md
+!deliverables/SHA256SUMS
 input/*
 !input/.gitkeep
+release/
 
 .DS_Store
 Thumbs.db

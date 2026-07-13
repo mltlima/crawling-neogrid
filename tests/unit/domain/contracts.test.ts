@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  artifactManifestSchema,
   productOutputSchema,
   receivedUrlSchema,
 } from '../../../src/domain/index.js';
@@ -62,6 +63,27 @@ describe('domain contracts', () => {
         discount_price: 1200,
         status: 'success',
         error_message: null,
+      }),
+    ).toThrow();
+  });
+
+  it('rejects artifact manifests with contradictory counts', () => {
+    expect(() =>
+      artifactManifestSchema.parse({
+        schemaVersion: 1,
+        runId: 'run',
+        inputSha256: 'a'.repeat(64),
+        generatedAt: '2026-01-01T00:00:00.000Z',
+        productsCount: 2,
+        pricesInCents: true,
+        summary: { successfulRecords: 1, failedRecords: 0 },
+        files: [
+          {
+            fileName: 'products.jsonl',
+            sizeBytes: 1,
+            sha256: 'b'.repeat(64),
+          },
+        ],
       }),
     ).toThrow();
   });

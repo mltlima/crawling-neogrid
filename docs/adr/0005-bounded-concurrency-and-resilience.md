@@ -10,7 +10,7 @@ Usamos um worker pool nativo limitado por configuração. Workers retiram itens 
 
 A política permite retry de timeout, 429, HTTP 5xx e browser realmente desconectado. Bloqueio, localização, indisponibilidade, HTTP 4xx, parsing, extração e erro inesperado são terminais. O atraso é `min(base * 2^índice, teto)`, reduzido por jitter configurável e elevado por `Retry-After` válido, sempre limitado pelo teto.
 
-Cada resultado registra um histórico pequeno de tentativas, sem HTML, payload, headers ou URL adicional. A ordem final é por `originalIndex`. O circuit breaker abre por bloqueios consecutivos, rate limits esgotados ou falha de recuperação; itens não iniciados são contabilizados sem produto fictício.
+Cada resultado registra um histórico pequeno de tentativas, sem HTML, payload, headers ou URL adicional. A ordem final é por `originalIndex`. Falhas são isoladas por URL e não abrem circuit breaker: redirecionamentos, indisponibilidade, localização e bloqueios são persistidos como erro e o lote continua. Uma captura de tela é salva para cada resultado com erro. Apenas sinal de encerramento ou falha fatal de checkpoint interrompe a execução.
 
 ## Consequências e riscos
 

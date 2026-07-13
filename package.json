@@ -4,6 +4,7 @@
   "description": "Sequential batch crawler CLI with offline-testable iFood extraction",
   "type": "module",
   "private": true,
+  "packageManager": "npm@10.8.2",
   "bin": {
     "ifood-crawler": "dist/cli/index.js"
   },
@@ -20,7 +21,17 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
-    "validate": "npm run format:check && npm run lint && npm run typecheck && npm run test:coverage && npm run build"
+    "validate": "npm run format:check && npm run lint && npm run typecheck && npm run test:coverage && npm run build",
+    "audit": "npm audit --omit=dev",
+    "docker:build": "docker build --pull -t crawling-neogrid:local .",
+    "docker:smoke": "docker run --rm crawling-neogrid:local --help && docker run --rm crawling-neogrid:local --version",
+    "verify:output": "tsx scripts/verify-output.ts",
+    "verify:delivery": "node scripts/verify-delivery.mjs",
+    "benchmark:offline": "node scripts/benchmark-offline.mjs",
+    "evidence:quality": "node scripts/generate-quality-evidence.mjs",
+    "finalize:delivery": "node scripts/finalize-delivery.mjs",
+    "record:execution": "node scripts/record-execution-evidence.mjs",
+    "package:delivery": "node scripts/package-delivery.mjs"
   },
   "keywords": [
     "crawler",
@@ -48,6 +59,7 @@
     "@eslint/js": "^9.39.1",
     "@types/node": "^20.19.23",
     "@vitest/coverage-v8": "^4.1.10",
+    "archiver": "^8.0.0",
     "eslint": "^9.39.1",
     "prettier": "^3.9.5",
     "tsx": "^4.23.0",

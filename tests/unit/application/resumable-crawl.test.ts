@@ -45,6 +45,7 @@ const options: ResumableCrawlOptions = {
   resume: false,
   forceUnlock: false,
   inputSha256: hash,
+  selectedInputs: [{ originalIndex: 0, merchantId, itemId }],
   headless: true,
   timeoutMs: 1,
   settleTimeoutMs: 1,
@@ -95,6 +96,9 @@ describe('ResumableCrawlUseCase', () => {
     ).resolves.toEqual(result());
     expect(checkpoint.acquireLock).toHaveBeenCalledWith('run', false);
     expect(checkpoint.create).toHaveBeenCalledWith(manifest());
+    expect(batch.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: 'run' }),
+    );
     expect(checkpoint.writeManifest).toHaveBeenCalledWith(
       expect.objectContaining({
         status: 'COMPLETED',
@@ -103,6 +107,43 @@ describe('ResumableCrawlUseCase', () => {
       }),
     );
     expect(checkpoint.releaseLock).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    { limit: 1 },
+    { selectedInputs: [{ originalIndex: 1, merchantId, itemId }] },
+    {
+      selectedInputs: [
+        {
+          originalIndex: 0,
+          merchantId: '33333333-3333-4333-8333-333333333333',
+          itemId,
+        },
+      ],
+    },
+    {
+      selectedInputs: [
+        {
+          originalIndex: 0,
+          merchantId,
+          itemId: '44444444-4444-4444-8444-444444444444',
+        },
+      ],
+    },
+  ])('rejects incompatible selection %#', async (override) => {
+    const checkpoint = store();
+    vi.mocked(checkpoint.replay).mockResolvedValue({
+      manifest: manifest(),
+      results: [],
+      repairedTrailingLine: false,
+    });
+    const batch = { execute: vi.fn() } as unknown as CrawlBatchUseCase;
+    await expect(
+      new ResumableCrawlUseCase(batch, checkpoint).execute(
+        { ...options, ...override, resume: true },
+        async () => manifest(),
+      ),
+    ).rejects.toThrow('Checkpoint incompat');
   });
 
   it('rejects incompatible resume journals and still releases the lock', async () => {

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   CrawlBatchUseCase,
+  InputOperationalError,
   ValidateInputUseCase,
   type BatchBrowserManager,
   type BatchLogger,
@@ -172,7 +173,7 @@ describe('CrawlBatchUseCase resilient pool', () => {
     expect(batch.summary.processedRecords).toBe(0);
   });
 
-  it('opens the breaker and records inputs not started', async () => {
+  it('processes every input even when all products are blocked', async () => {
     const collector: CrawlProductCollector = {
       execute: (
         _session,
@@ -191,11 +192,11 @@ describe('CrawlBatchUseCase resilient pool', () => {
       () => 'blocked',
     ).execute({ ...options, concurrency: 1, circuitBreakerThreshold: 1 });
     expect(batch.summary).toMatchObject({
-      circuitBreakerOpened: true,
-      skippedRecords: 2,
-      processedRecords: 1,
+      circuitBreakerOpened: false,
+      skippedRecords: 0,
+      processedRecords: 3,
     });
-    expect(batch.skippedInputs).toHaveLength(2);
+    expect(batch.skippedInputs).toHaveLength(0);
   });
 
   it('treats initial browser opening failure as fatal', async () => {
@@ -210,5 +211,36 @@ describe('CrawlBatchUseCase resilient pool', () => {
       () => 'fatal',
     );
     await expect(useCase.execute(options)).rejects.toThrow('launch failed');
+  });
+
+  it('treats checkpoint confirmation failure as fatal', async () => {
+    const useCase = new CrawlBatchUseCase(
+      validationFor([makeIfoodUrl(), makeIfoodUrl()]),
+      { create: (): BatchBrowserManager => manager() },
+      {
+        execute: (
+          _session,
+          record,
+        ): ReturnType<CrawlProductCollector['execute']> =>
+          Promise.resolve({
+            result: itemResult(record),
+            page: null,
+          }),
+      },
+      logger,
+      () => 'checkpoint-fatal',
+    );
+    await expect(
+      useCase.execute({
+        ...options,
+        onResultConfirmed: () =>
+          Promise.reject(
+            new InputOperationalError(
+              'CHECKPOINT_FAILED',
+              'journal indisponível',
+            ),
+          ),
+      }),
+    ).rejects.toMatchObject({ code: 'CHECKPOINT_FAILED' });
   });
 });

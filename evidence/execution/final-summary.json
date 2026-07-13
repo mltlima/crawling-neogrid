@@ -1,0 +1,27 @@
+{
+  "status": "COMPLETED",
+  "runId": "15f5199d-1384-47e3-8cf4-b4c0f377d20e",
+  "inputSha256": "ebcb51914ab776e0373102dab3da7f90f7b97816f4ab71eb37cd40041db381c2",
+  "selectedRecords": 999,
+  "processedRecords": 999,
+  "successfulRecords": 65,
+  "failedRecords": 934,
+  "skippedRecords": 0,
+  "successRatePercent": 6.51,
+  "durationMs": 3424570,
+  "recordsByPageState": {
+    "PRODUCT_FOUND": 65,
+    "REDIRECTED_TO_HOME": 478,
+    "ACCESS_BLOCKED": 437,
+    "UNKNOWN_PAGE_STATE": 19
+  },
+  "recordsBySource": {
+    "network": 65,
+    "none": 934
+  },
+  "circuitBreakerOpened": false,
+  "screenshots": 934,
+  "checkpoint": "artifacts/checkpoints/official-full-v2",
+  "productsExported": true,
+  "outputVerified": true
+}

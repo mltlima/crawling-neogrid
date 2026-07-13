@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 
 import { destination } from 'pino';
 
@@ -22,6 +24,7 @@ import {
   JsonlProductExporter,
   JsonBatchReportWriter,
   JsonValidationReportWriter,
+  OutputVerifier,
 } from '../adapters/output/index.js';
 import {
   CrawlBatchUseCase,
@@ -29,6 +32,7 @@ import {
   ProbeProductUseCase,
   ValidateInputUseCase,
   ResumableCrawlUseCase,
+  ShutdownController,
 } from '../application/index.js';
 import type {
   CrawlBatchResult,
@@ -138,79 +142,119 @@ export async function crawlBatch(options: {
 }): Promise<CrawlBatchResult> {
   const validation = await validateInputUseCase.execute(options.inputPath);
   const inputSha256 = await sha256File(options.inputPath);
+  const ordered = [...validation.validRecords].sort(
+    (a, b) => a.originalIndex - b.originalIndex,
+  );
+  const selected =
+    options.limit === undefined ? ordered : ordered.slice(0, options.limit);
+  const selectedInputs = selected.map((record) => ({
+    originalIndex: record.originalIndex,
+    merchantId: record.merchantId,
+    itemId: record.itemId,
+  }));
   const store = new FilesystemCheckpointStore(
     options.checkpointDir,
     options.syncEvery,
   );
   const resumable = new ResumableCrawlUseCase(crawlBatchUseCase, store);
-  const result = await resumable.execute(
-    { ...options, maxJsonBytes: 1_000_000, inputSha256 },
-    () => {
-      const timestamp = new Date().toISOString();
-      const ordered = [...validation.validRecords].sort(
-        (a, b) => a.originalIndex - b.originalIndex,
-      );
-      const selected =
-        options.limit === undefined ? ordered : ordered.slice(0, options.limit);
-      return Promise.resolve({
-        schemaVersion: 1 as const,
-        runId: randomUUID(),
-        status: 'CREATED' as const,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-        input: {
-          fileName: safeFileName(options.inputPath),
-          format: validation.batch.format,
-          sha256: inputSha256,
+  const shutdown = new ShutdownController();
+  const signalHandler = (): void => shutdown.request();
+  process.on('SIGINT', signalHandler);
+  process.on('SIGTERM', signalHandler);
+  let result: CrawlBatchResult;
+  try {
+    result = await resumable.execute(
+      {
+        ...options,
+        maxJsonBytes: 1_000_000,
+        inputSha256,
+        selectedInputs,
+        shouldStop: () => shutdown.shouldStop,
+        onFailedPage: async (item, page) => {
+          const directory = join(options.checkpointDir, 'failure-screenshots');
+          await mkdir(directory, { recursive: true });
+          await writeFile(
+            join(directory, `${String(item.originalIndex)}-${item.itemId}.png`),
+            page.screenshot,
+          );
         },
-        totalRecords: validation.summary.totalRecords,
-        validRecords: validation.summary.validRecords,
-        selectedRecords: selected.length,
-        limit: options.limit ?? null,
-        selectedInputs: selected.map((record) => ({
-          originalIndex: record.originalIndex,
-          merchantId: record.merchantId,
-          itemId: record.itemId,
-        })),
-        effectiveConfig: {
-          concurrency: options.concurrency,
-          maxRetries: options.maxRetries,
-        },
-        appVersion: null,
-        completedRecords: 0,
-        pendingRecords: selected.length,
-        skippedRecords: 0,
-        files: {
-          resultsJournal: 'results.journal.jsonl' as const,
-          eventsJournal: 'events.journal.jsonl' as const,
-        },
-      });
-    },
-  );
+      },
+      () => {
+        const timestamp = new Date().toISOString();
+        return Promise.resolve({
+          schemaVersion: 1 as const,
+          runId: randomUUID(),
+          status: 'CREATED' as const,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          input: {
+            fileName: safeFileName(options.inputPath),
+            format: validation.batch.format,
+            sha256: inputSha256,
+          },
+          totalRecords: validation.summary.totalRecords,
+          validRecords: validation.summary.validRecords,
+          selectedRecords: selected.length,
+          limit: options.limit ?? null,
+          selectedInputs,
+          effectiveConfig: {
+            concurrency: options.concurrency,
+            maxRetries: options.maxRetries,
+          },
+          appVersion: null,
+          completedRecords: 0,
+          pendingRecords: selected.length,
+          skippedRecords: 0,
+          files: {
+            resultsJournal: 'results.journal.jsonl' as const,
+            eventsJournal: 'events.journal.jsonl' as const,
+          },
+        });
+      },
+    );
+  } finally {
+    process.off('SIGINT', signalHandler);
+    process.off('SIGTERM', signalHandler);
+  }
   const complete =
     result.invalidRecords.length === 0 &&
     result.summary.skippedRecords === 0 &&
     result.summary.processedRecords === result.summary.selectedRecords;
   if (complete) {
     const products = result.results.map((entry) => entry.product);
+    const manifestPath = join(
+      dirname(options.outputJsonl),
+      'artifacts-manifest.json',
+    );
     await new JsonlProductExporter().write(options.outputJsonl, products);
     await new CsvProductExporter().write(options.outputCsv, products);
-    await new ArtifactManifestWriter().write(
-      `${options.checkpointDir}/artifacts-manifest.json`,
-      {
-        schemaVersion: 1,
-        runId: result.runId,
-        inputSha256,
-        generatedAt: new Date().toISOString(),
-        productsCount: products.length,
-        pricesInCents: true,
-        summary: {
-          successfulRecords: result.summary.successfulRecords,
-          failedRecords: result.summary.failedRecords,
-        },
-        files: [options.outputJsonl, options.outputCsv],
+    await new ArtifactManifestWriter().write(manifestPath, {
+      schemaVersion: 1,
+      runId: result.runId,
+      inputSha256,
+      generatedAt: new Date().toISOString(),
+      productsCount: products.length,
+      pricesInCents: true,
+      summary: {
+        successfulRecords: result.summary.successfulRecords,
+        failedRecords: result.summary.failedRecords,
       },
-    );
+      files: [options.outputJsonl, options.outputCsv],
+    });
+    await new OutputVerifier().verifyOrThrow({
+      inputSha256,
+      expectedUrls: result.results.map((entry) => entry.product.product_url),
+      expectedRunId: result.runId,
+      expectedSuccessfulRecords: result.summary.successfulRecords,
+      expectedFailedRecords: result.summary.failedRecords,
+      jsonlPath: options.outputJsonl,
+      csvPath: options.outputCsv,
+      manifestPath,
+      reportPath: join(
+        dirname(options.outputJsonl),
+        'output-verification.json',
+      ),
+    });
   }
   return result;
 }

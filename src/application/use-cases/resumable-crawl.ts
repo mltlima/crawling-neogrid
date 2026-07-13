@@ -45,6 +45,7 @@ export interface ResumableCrawlOptions extends CrawlBatchOptions {
   readonly resume: boolean;
   readonly forceUnlock: boolean;
   readonly inputSha256: string;
+  readonly selectedInputs: RunManifest['selectedInputs'];
 }
 
 export class ResumableCrawlUseCase {
@@ -72,6 +73,9 @@ export class ResumableCrawlUseCase {
         for (const entry of replay.results) {
           this.assertEntry(manifest, entry);
         }
+        if (replay.repairedTrailingLine) {
+          await this.store.appendEvent(this.event('REPAIRED_JOURNAL', {}));
+        }
         confirmed = replay.results.map((entry) => entry.result);
         await this.store.appendEvent(
           this.event('RESUMED', { confirmed: confirmed.length }),
@@ -90,6 +94,7 @@ export class ResumableCrawlUseCase {
       );
       const result = await this.batch.execute({
         ...options,
+        runId: manifest.runId,
         confirmedResults: confirmed,
         onResultConfirmed: async (item) => {
           await this.store.appendResult({
@@ -117,10 +122,13 @@ export class ResumableCrawlUseCase {
         ),
         skippedRecords: skipped,
       });
+      const finalEvent = complete
+        ? 'COMPLETED'
+        : result.summary.circuitBreakerOpened
+          ? 'CIRCUIT_BREAKER_OPENED'
+          : 'INTERRUPT_REQUESTED';
       await this.store.appendEvent(
-        this.event(complete ? 'COMPLETED' : 'FAILED', {
-          completed: confirmedIndexes.size,
-        }),
+        this.event(finalEvent, { completed: confirmedIndexes.size }),
       );
       return result;
     } catch (error: unknown) {
@@ -138,7 +146,9 @@ export class ResumableCrawlUseCase {
   ): void {
     if (
       manifest.input.sha256 !== options.inputSha256 ||
-      manifest.limit !== (options.limit ?? null)
+      manifest.limit !== (options.limit ?? null) ||
+      JSON.stringify(manifest.selectedInputs) !==
+        JSON.stringify(options.selectedInputs)
     ) {
       throw new Error(
         'Checkpoint incompatível com a entrada ou seleção atual.',

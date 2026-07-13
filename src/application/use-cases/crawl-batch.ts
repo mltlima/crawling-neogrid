@@ -12,7 +12,6 @@ import {
 import type { BatchLogger } from '../ports/batch-logger.js';
 import { InputOperationalError } from '../errors/input-operational-error.js';
 import { RequestPacer } from '../services/request-pacer.js';
-import { SafetyCircuitBreaker } from '../services/safety-circuit-breaker.js';
 import {
   CrawlProductWithRetryUseCase,
   BrowserRecoveryError,
@@ -33,6 +32,7 @@ export interface BatchBrowserManagerFactory {
 }
 
 export interface CrawlBatchOptions {
+  readonly runId?: string;
   readonly inputPath: string;
   readonly limit?: number;
   readonly headless: boolean;
@@ -48,6 +48,10 @@ export interface CrawlBatchOptions {
   readonly circuitBreakerThreshold: number;
   readonly confirmedResults?: readonly CrawlItemResult[];
   readonly onResultConfirmed?: (result: CrawlItemResult) => Promise<void>;
+  readonly onFailedPage?: (
+    result: CrawlItemResult,
+    page: import('../../domain/index.js').PageProbe,
+  ) => Promise<void>;
   readonly shouldStop?: () => boolean;
 }
 
@@ -66,7 +70,7 @@ export class CrawlBatchUseCase {
 
   public async execute(options: CrawlBatchOptions): Promise<CrawlBatchResult> {
     const startedAt = this.now();
-    const runId = this.createRunId();
+    const runId = options.runId ?? this.createRunId();
     const validation = await this.validateInput.execute(options.inputPath);
     const ordered = [...validation.validRecords].sort(
       (a, b) => a.originalIndex - b.originalIndex,
@@ -82,7 +86,6 @@ export class CrawlBatchUseCase {
     );
     const results: CrawlItemResult[] = [...confirmed];
     const startedIndexes = new Set<number>(confirmedIndexes);
-    const breaker = new SafetyCircuitBreaker(options.circuitBreakerThreshold);
     let cursor = 0;
     let active = 0;
     let maxObservedConcurrency = 0;
@@ -110,7 +113,6 @@ export class CrawlBatchUseCase {
             workerIndex + 1,
             () => {
               if (
-                breaker.opened ||
                 options.shouldStop?.() === true ||
                 cursor >= selected.length
               ) {
@@ -133,7 +135,7 @@ export class CrawlBatchUseCase {
                   timeoutMs: options.timeoutMs,
                   settleTimeoutMs: options.settleTimeoutMs,
                   trace: false,
-                  captureScreenshot: false,
+                  captureScreenshot: true,
                   maxJsonBytes: options.maxJsonBytes,
                   maxRetryAfterMs: options.retryMaxDelayMs,
                   maxRetries: options.maxRetries,
@@ -144,6 +146,12 @@ export class CrawlBatchUseCase {
                   sleep: this.sleep,
                 });
                 await options.onResultConfirmed?.(retried.result);
+                if (
+                  retried.result.product.status === 'error' &&
+                  retried.page !== null
+                ) {
+                  await options.onFailedPage?.(retried.result, retried.page);
+                }
                 results.push(retried.result);
                 for (const attempt of retried.result.attempts) {
                   this.logger.info(
@@ -163,29 +171,17 @@ export class CrawlBatchUseCase {
                 if (retried.retriesExhausted) {
                   exhaustedRetries += 1;
                 }
-                const openedNow = breaker.record(
-                  retried.result,
-                  retried.retriesExhausted,
-                );
-                if (openedNow) {
-                  this.logger.warn(
-                    { runId, reason: breaker.reason },
-                    'Circuit breaker opened',
-                  );
-                }
               } catch (error: unknown) {
                 if (error instanceof InputOperationalError) {
                   throw error;
                 }
                 if (error instanceof BrowserRecoveryError) {
-                  breaker.openForRecoveryFailure();
                   this.logger.warn(
                     {
                       runId,
                       workerId: workerIndex + 1,
-                      reason: breaker.reason,
                     },
-                    'Browser recovery failed and circuit breaker opened',
+                    'Browser recovery failed',
                   );
                 }
                 const failure = this.unexpectedFailure(record);
@@ -244,8 +240,8 @@ export class CrawlBatchUseCase {
       exhaustedRetries,
       skippedRecords: skippedInputs.length,
       browserRestarts: manager.browserRestarts,
-      circuitBreakerOpened: breaker.opened,
-      circuitBreakerReason: breaker.reason,
+      circuitBreakerOpened: false,
+      circuitBreakerReason: null,
     };
     const batch = crawlBatchResultSchema.parse({
       runId,

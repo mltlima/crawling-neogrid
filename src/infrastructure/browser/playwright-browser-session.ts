@@ -414,6 +414,9 @@ export class PlaywrightManagedBrowserSession implements ManagedBrowserSession {
       0,
       Date.now() - (startedAt.get(response.request()) ?? Date.now()),
     );
+    const deniedProductCandidate =
+      (response.status() === 403 || response.status() === 429) &&
+      (rawUrl.includes(input.itemId) || rawUrl.includes(input.merchantId));
     const summary = {
       url: sanitizedUrl(rawUrl),
       method: response.request().method(),
@@ -421,7 +424,8 @@ export class PlaywrightManagedBrowserSession implements ManagedBrowserSession {
       contentType,
       durationMs,
       approximateSizeBytes: contentLength ?? body.byteLength,
-      possibleProductData: urlCandidate && (containsItem || jsonContent),
+      possibleProductData:
+        urlCandidate && (containsItem || jsonContent || deniedProductCandidate),
       payloadTruncated: declaredOversized || loadedOversized,
     };
     this.logger.debug({ response: summary }, 'Observed browser response');

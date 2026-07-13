@@ -11,8 +11,6 @@ import {
 } from '../../domain/index.js';
 import { writeAtomicUtf8 } from '../../infrastructure/persistence/index.js';
 
-/* v8 ignore start -- byte-level output is covered through integration artifacts. */
-
 const CSV_HEADERS = [
   'title',
   'normal_price',
@@ -103,4 +101,3 @@ export class ArtifactManifestWriter {
     await writeAtomicUtf8(filePath, `${JSON.stringify(manifest, null, 2)}\n`);
   }
 }
-/* v8 ignore stop */

@@ -1,0 +1,32 @@
+{
+  "kind": "deterministic-offline-benchmark",
+  "disclaimer": "Não representa a latência real do iFood.",
+  "generatedAt": "2026-07-12T22:09:31.185Z",
+  "environment": {
+    "node": "v20.11.0",
+    "platform": "win32",
+    "release": "10.0.19045",
+    "cpus": 16,
+    "totalMemoryBytes": 34277396480,
+    "freeMemoryBytes": 12061810688
+  },
+  "configuration": {
+    "records": 1000,
+    "concurrency": 4
+  },
+  "metrics": {
+    "durationMs": 41.86900000000001,
+    "throughputPerSecond": 23884.01920275144,
+    "attempts": 1050,
+    "retries": 50,
+    "approximateHeapDeltaBytes": 66288,
+    "successes": 900,
+    "failures": 100,
+    "ordered": true,
+    "promiseCount": 4,
+    "checkpointConfirmedRecords": 500,
+    "resumedRecords": 500,
+    "reprocessedConfirmedRecords": 0,
+    "duplicateUrls": 9
+  }
+}

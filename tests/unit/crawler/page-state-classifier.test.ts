@@ -53,6 +53,26 @@ describe('classifyPageState', () => {
     [probe({ httpStatus: 429 }), 'RATE_LIMITED'],
     [
       probe({
+        responses: [
+          {
+            summary: {
+              url: 'https://example.test/analytics',
+              method: 'POST',
+              status: 403,
+              contentType: 'text/html',
+              durationMs: 1,
+              approximateSizeBytes: 1,
+              possibleProductData: false,
+              payloadTruncated: false,
+            },
+            jsonPayload: null,
+          },
+        ],
+      }),
+      'UNKNOWN_PAGE_STATE',
+    ],
+    [
+      probe({
         finalUrl:
           'https://www.ifood.com.br/?item=22222222-2222-4222-8222-222222222222',
       }),
@@ -117,6 +137,28 @@ describe('classifyPageState', () => {
       error_message: 'Indisponível.',
     };
     expect(classifyPageState(probe(), success)).toBe('PRODUCT_FOUND');
+    expect(
+      classifyPageState(
+        probe({
+          responses: [
+            {
+              summary: {
+                url: 'https://example.test/items/target',
+                method: 'GET',
+                status: 403,
+                contentType: 'text/html',
+                durationMs: 1,
+                approximateSizeBytes: 1,
+                possibleProductData: true,
+                payloadTruncated: false,
+              },
+              jsonPayload: null,
+            },
+          ],
+        }),
+        success,
+      ),
+    ).toBe('PRODUCT_FOUND');
     expect(classifyPageState(probe(), unavailable)).toBe('PRODUCT_UNAVAILABLE');
     expect(
       classifyPageState(
@@ -132,6 +174,21 @@ describe('classifyPageState', () => {
         null,
       ),
     ).toBe('ACCESS_BLOCKED');
+    expect(
+      classifyPageState(
+        probe({
+          dom: {
+            title: null,
+            normalPrice: null,
+            discountPrice: null,
+            imageUrl: null,
+            bodyText:
+              'Fora da área de entrega - Verifique sua localização. Trocar endereço.',
+          },
+        }),
+        null,
+      ),
+    ).toBe('LOCATION_REQUIRED');
     expect(
       classifyPageState(
         probe({

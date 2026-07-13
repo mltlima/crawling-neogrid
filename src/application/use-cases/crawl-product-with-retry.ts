@@ -2,6 +2,7 @@ import {
   crawlItemResultSchema,
   type CrawlAttempt,
   type CrawlItemResult,
+  type PageProbe,
   type ValidInputRecord,
 } from '../../domain/index.js';
 import {
@@ -34,6 +35,7 @@ export interface RetryExecutionOptions
 export interface RetriedCrawlProduct {
   readonly result: CrawlItemResult;
   readonly retriesExhausted: boolean;
+  readonly page: PageProbe | null;
 }
 
 export class BrowserRecoveryError extends Error {
@@ -56,6 +58,7 @@ export class CrawlProductWithRetryUseCase {
   ): Promise<RetriedCrawlProduct> {
     const attempts: CrawlAttempt[] = [];
     let finalResult: CrawlItemResult | null = null;
+    let finalPage: PageProbe | null = null;
     let retriesExhausted = false;
     for (
       let attemptIndex = 0;
@@ -75,6 +78,7 @@ export class CrawlProductWithRetryUseCase {
         options,
       );
       finalResult = collected.result;
+      finalPage = collected.page;
       const connected = lease.session.isConnected?.() ?? true;
       const retryable = isRetryableFailure({
         result: finalResult,
@@ -129,6 +133,7 @@ export class CrawlProductWithRetryUseCase {
           retryCount > 0 && finalResult.product.status === 'success',
       }),
       retriesExhausted,
+      page: finalPage,
     };
   }
 }

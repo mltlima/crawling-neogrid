@@ -1,0 +1,10 @@
+{
+  "inputSha256": "ebcb51914ab776e0373102dab3da7f90f7b97816f4ab71eb37cd40041db381c2",
+  "records": 999,
+  "jsonlRecords": 999,
+  "csvRecords": 999,
+  "successRecords": 65,
+  "errorRecords": 934,
+  "valid": true,
+  "errors": []
+}

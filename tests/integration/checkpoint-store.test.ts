@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -52,6 +52,21 @@ describe('FilesystemCheckpointStore', () => {
     const replay = await store.replay();
     expect(replay.results).toEqual([]);
     expect(replay.repairedTrailingLine).toBe(true);
+    expect(await readFile(join(dir, 'results.journal.jsonl'), 'utf8')).toBe('');
+  });
+
+  it('refuses force unlock while the owning process is active', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'checkpoint-'));
+    dirs.push(dir);
+    const store = new FilesystemCheckpointStore(dir);
+    await store.create(manifest());
+    await writeFile(
+      store.lockPath,
+      JSON.stringify({ pid: process.pid, runId: 'run' }),
+    );
+    await expect(store.acquireLock('run', true)).rejects.toMatchObject({
+      code: 'CHECKPOINT_LOCKED',
+    });
   });
 });
 afterEach(async () => {

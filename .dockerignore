@@ -8,5 +8,10 @@ docs
 evidence
 input
 node_modules
+release
+scripts
 tests
+compose.yaml
+.nvmrc
+*.md
 *.log

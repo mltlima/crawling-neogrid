@@ -1,0 +1,17 @@
+services:
+  crawler:
+    build:
+      context: .
+    image: crawling-neogrid:local
+    init: true
+    user: pwuser
+    ipc: host
+    restart: 'no'
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - ./input:/app/input:ro
+      - ./artifacts:/app/artifacts
+      - ./evidence:/app/evidence
+      - ./deliverables:/app/deliverables

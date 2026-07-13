@@ -134,7 +134,18 @@ export const artifactManifestSchema = z
       )
       .min(1),
   })
-  .strict();
+  .strict()
+  .superRefine((manifest, context) => {
+    if (
+      manifest.productsCount !==
+      manifest.summary.successfulRecords + manifest.summary.failedRecords
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Contagens do manifest de artefatos são inconsistentes.',
+      });
+    }
+  });
 export type ArtifactManifest = z.infer<typeof artifactManifestSchema>;
 
 export const finalProductSchema = productOutputSchema;

@@ -22,7 +22,7 @@ export default defineConfig({
         'src/observability/**/*.ts',
       ],
       provider: 'v8',
-      reporter: ['text', 'html', 'lcov'],
+      reporter: ['text', 'html', 'lcov', 'json-summary'],
       thresholds: {
         branches: 85,
         functions: 90,

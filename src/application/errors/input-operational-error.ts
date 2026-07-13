@@ -11,7 +11,8 @@ export type InputOperationalErrorCode =
   | 'BATCH_REPORT_WRITE_FAILED'
   | 'CHECKPOINT_FAILED'
   | 'CHECKPOINT_LOCKED'
-  | 'EXPORT_FAILED';
+  | 'EXPORT_FAILED'
+  | 'OUTPUT_VERIFICATION_FAILED';
 
 export class InputOperationalError extends Error {
   public readonly code: InputOperationalErrorCode;

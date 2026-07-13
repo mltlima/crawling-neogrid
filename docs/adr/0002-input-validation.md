@@ -13,7 +13,7 @@ Cada adapter implementa `InputReader` e converte sua origem em `InputBatch`. O c
 
 UUIDs de merchant e item seguem a forma canônica RFC 4122. Duplicidades são contadas como ocorrências além da primeira e acompanhadas pelos índices zero-based de origem. O agrupamento por `merchantId` mantém todos os registros, inclusive duplicados.
 
-O contrato futuro de produto é strict e possui exatamente sete campos. A Etapa 2 não instancia produtos nem escreve arquivos de produtos.
+O contrato de produto é strict e possui exatamente sete campos. A validação de entrada não instancia produtos nem escreve arquivos de produtos.
 
 O resumo inclui dimensões únicas, distribuições por merchant/localidade, erros por código e duração. A CLI pode persistir o relatório completo via `ValidationReportWriter`, sem acoplar o caso de uso ao filesystem. Exit code 2 representa um lote concluído com rejeições; exit code 1 fica reservado a falhas operacionais.
 

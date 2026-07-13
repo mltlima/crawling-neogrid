@@ -113,6 +113,12 @@ export class FilesystemCheckpointStore {
 
   public async flush(): Promise<void> {
     await this.appendTail;
+    const handle = await open(this.resultsPath, 'a');
+    try {
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
   }
 
   public async replay(): Promise<CheckpointReplay> {
@@ -148,6 +154,13 @@ export class FilesystemCheckpointStore {
       }
       completed.set(entry.originalIndex, entry);
     }
+    if (repairedTrailingLine) {
+      const repaired = lines.filter((line) => line.length > 0).join('\n');
+      await writeFile(
+        this.resultsPath,
+        repaired.length > 0 ? `${repaired}\n` : '',
+      );
+    }
     return {
       manifest,
       results: [...completed.values()].sort(
@@ -161,14 +174,40 @@ export class FilesystemCheckpointStore {
     await mkdir(this.directory, { recursive: true });
     if (forceUnlock) {
       await this.readManifest();
+      let lock: { pid: number };
       try {
-        JSON.parse(await readFile(this.lockPath, 'utf8')) as unknown;
+        const parsed = JSON.parse(await readFile(this.lockPath, 'utf8')) as {
+          pid?: unknown;
+        };
+        if (!Number.isInteger(parsed.pid) || Number(parsed.pid) <= 0) {
+          throw new Error('PID inválido.');
+        }
+        lock = { pid: Number(parsed.pid) };
       } catch (error: unknown) {
         throw new InputOperationalError(
           'CHECKPOINT_LOCKED',
           'Lock residual inválido; desbloqueio recusado.',
           { cause: error },
         );
+      }
+      try {
+        process.kill(lock.pid, 0);
+        throw new InputOperationalError(
+          'CHECKPOINT_LOCKED',
+          'Lock pertence a um processo ativo; desbloqueio recusado.',
+        );
+      } catch (error: unknown) {
+        if (error instanceof InputOperationalError) {
+          throw error;
+        }
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code !== 'ESRCH') {
+          throw new InputOperationalError(
+            'CHECKPOINT_LOCKED',
+            'Não foi possível confirmar que o lock é residual.',
+            { cause: error },
+          );
+        }
       }
       await rm(this.lockPath, { force: true });
     }

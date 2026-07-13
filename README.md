@@ -1,160 +1,89 @@
-# iFood Batch Crawler
+# Crawling Neogrid
 
-Crawler batch via CLI para o desafio técnico da Neogrid. A Etapa 4 combina validação de entrada, coleta sequencial isolada com Playwright e relatório técnico, com desenvolvimento e testes inteiramente offline.
+[![CI](https://github.com/mltlima/crawling-neogrid/actions/workflows/ci.yml/badge.svg)](https://github.com/mltlima/crawling-neogrid/actions/workflows/ci.yml)
 
-## Requisitos
+CLI batch em Node.js/TypeScript para validar arquivos de URLs do iFood, coletar produtos com Playwright e gerar entregáveis JSONL/CSV verificáveis. Não é uma API HTTP. Não usa credenciais, stealth, proxies ou resolução de CAPTCHA.
 
-- Node.js LTS (20.11 ou superior; Node 22 é usado no CI e no build Docker)
-- npm 10+
+```mermaid
+flowchart LR
+  A[XLSX/CSV/TXT/JSON] --> B[Validação e normalização]
+  B --> C[Worker pool e pacing]
+  C --> D[Playwright isolado]
+  D --> E[Network/embedded/DOM]
+  E --> F[Checkpoint e journals]
+  F --> G[JSONL e CSV]
+  G --> H[Manifest e verificação]
+```
 
-## Preparação
+## Requisitos e instalação
+
+- Node.js 20.11 LTS, npm 10.8 ou Docker/Compose V2.
+- Windows PowerShell, Linux e macOS são suportados.
 
 ```bash
 npm ci
-cp .env.example .env
-```
-
-No PowerShell, use `Copy-Item .env.example .env` no lugar de `cp`.
-
-## CLI
-
-Durante o desenvolvimento:
-
-```bash
-node --import tsx src/cli/index.ts --help
-node --import tsx src/cli/index.ts --version
-```
-
-Após o build:
-
-```bash
-npm run build
-node dist/cli/index.js --help
-node dist/cli/index.js --version
-```
-
-Para validar uma entrada e imprimir o resumo em JSON:
-
-```bash
-node dist/cli/index.js validate-input --input ./input/urls.csv
-```
-
-Para também salvar o relatório completo (lote, registros válidos e inválidos, duplicidades, grupos e resumo):
-
-```bash
-node dist/cli/index.js validate-input \
-  --input ./input/urls.csv \
-  --report ./artifacts/input-validation.json
-```
-
-A saída do terminal continua sendo o resumo em JSON, com ou sem `--report`.
-
-### Exit codes
-
-| Código | Significado                                                           |
-| -----: | --------------------------------------------------------------------- |
-|    `0` | Arquivo processado e todos os registros válidos.                      |
-|    `2` | Arquivo processado, mas existe pelo menos um registro inválido.       |
-|    `1` | Erro operacional, incluindo leitura, formato ou escrita do relatório. |
-
-São aceitos `.xlsx`, `.csv`, `.txt` e `.json`. XLSX e CSV exigem uma coluna `url` (case-insensitive); TXT recebe uma URL por linha; JSON recebe um array de strings ou de objetos com a propriedade `url`.
-
-## Qualidade
-
-```bash
+npx playwright install chromium
 npm run validate
 ```
 
-O comando executa formatação, lint, typecheck, testes offline com cobertura e build. Testes unitários e de CI não fazem chamadas ao site do iFood.
+## Entrada e comandos
 
-## Configuração
-
-As variáveis são documentadas em `.env.example` e validadas com Zod. Concorrência e retries são configuráveis desde a fundação, embora ainda não sejam usados:
-
-| Variável                            |                     Padrão | Regra                                 |
-| ----------------------------------- | -------------------------: | ------------------------------------- |
-| `NODE_ENV`                          |              `development` | `development`, `test` ou `production` |
-| `LOG_LEVEL`                         |                     `info` | nível aceito pelo Pino                |
-| `CRAWLER_CONCURRENCY`               |                        `2` | inteiro entre 1 e 20                  |
-| `CRAWLER_MAX_RETRIES`               |                        `3` | inteiro entre 0 e 10                  |
-| `CRAWLER_RETRY_DELAY_MS`            |                     `1000` | inteiro não negativo                  |
-| `CRAWLER_RETRY_MAX_DELAY_MS`        |                    `30000` | teto do backoff em ms                 |
-| `CRAWLER_RETRY_JITTER_RATIO`        |                      `0.2` | número entre 0 e 1                    |
-| `CRAWLER_MIN_REQUEST_INTERVAL_MS`   |                      `500` | intervalo global em ms                |
-| `CRAWLER_CIRCUIT_BREAKER_THRESHOLD` |                        `3` | falhas sistêmicas consecutivas, 1–100 |
-| `BROWSER_HEADLESS`                  |                     `true` | `true`/`false` ou `1`/`0`             |
-| `INPUT_PATH`                        |                  `./input` | caminho não vazio                     |
-| `OUTPUT_PATH`                       | `./artifacts/output.jsonl` | caminho não vazio                     |
-
-## Dependências de produção
-
-- `commander`: contrato e ajuda da CLI.
-- `dotenv`: carregamento local de variáveis de ambiente.
-- `zod`: validação e tipagem da configuração.
-- `pino`: logs estruturados em JSON com redação de campos sensíveis.
-- `playwright`: navegador gerenciado para probe isolado e coleta batch sequencial, com um contexto novo por URL.
-- `exceljs`: leitura isolada de planilhas XLSX pelo adapter de entrada.
-- `csv-parse`: parsing seguro de registros CSV pelo adapter de entrada.
-
-O override de `uuid@11.1.1` corrige uma vulnerabilidade transitiva do ExcelJS mantendo compatibilidade com a função `v4()` utilizada pela biblioteca.
-
-## Validação e normalização de URLs
-
-Uma URL aceita usa HTTPS, host exato `www.ifood.com.br`, nenhuma credencial ou porta personalizada, caminho `/delivery/{localidade}/{loja}/{merchantId}` e query string com `item={itemId}`. `merchantId` e `itemId` devem ser UUIDs.
-
-A URL original é preservada integralmente. A versão normalizada remove fragmento, normaliza UUIDs para minúsculas, remove a barra final do caminho e ordena os parâmetros de busca. Duplicidades são relatadas por URL normalizada, por `itemId` e por `merchantId + itemId`; nenhum registro é descartado.
-
-Erros de uma linha não encerram o lote. O resultado mantém código, mensagem, valor e índice originais. Arquivo inexistente, vazio, ilegível, extensão não suportada ou estrutura inválida gera um erro operacional explícito.
-
-O resumo informa totais gerais e de duplicidade, `uniqueUrls`, `uniqueItemIds`, `uniqueLocalities`, distribuições `recordsByMerchant` e `recordsByLocality`, contagem `errorsByCode` e `durationMs`. Métricas de unicidade e distribuição consideram os registros válidos; erros consideram os rejeitados.
-
-## Probe controlado de um produto
+São aceitos `.xlsx`, `.csv`, `.txt` e `.json`. XLSX/CSV usam coluna `url` sem diferenciar maiúsculas; TXT usa uma URL por linha; JSON aceita strings ou objetos `{ "url": "..." }`.
 
 ```bash
-node dist/cli/index.js probe-url \
-  --url "https://www.ifood.com.br/delivery/...?..." \
-  --timeout 30000 \
-  --settle-timeout 5000 \
-  --artifacts-dir ./artifacts \
-  --trace
+npm run dev -- --help
+npm run dev -- validate-input --input ./input/urls.xlsx --report ./artifacts/input-report.json
+npm run dev -- probe-url --headed --url 'https://www.ifood.com.br/delivery/...?...'
+npm run dev -- crawl --input ./input/urls.xlsx --concurrency 2 --min-request-interval 500 --checkpoint-dir ./artifacts/checkpoints/official --report ./deliverables/batch-report.json --output-jsonl ./deliverables/products.jsonl --output-csv ./deliverables/products.csv
 ```
 
-Use `--headed` somente quando precisar observar o navegador. O comando aceita uma URL por execução, valida-a antes da navegação e tenta, nesta ordem, dados JSON carregados pela página, dados embutidos e DOM. `--settle-timeout` limita a espera por item em resposta candidata, conteúdo de produto no DOM, bloqueio, indisponibilidade ou pedido de localização. Não há espera fixa, retry, concorrência, credenciais, stealth, proxy ou chamada direta a endpoints privados.
+Use `--resume` com a mesma entrada, seleção e diretório. `--force-unlock` só remove lock comprovadamente residual. O primeiro SIGINT/SIGTERM interrompe novas retiradas da fila e preserva o checkpoint; o segundo sinal registra solicitação imediata. `--headed` exibe o navegador. Trace fica desligado por padrão e pode conter dados temporários de sessão; nunca deve ser entregue sem revisão.
 
-Preços são inteiros em centavos: `2590` representa R$ 25,90. O resultado informa `network`, `embedded-data`, `dom` ou `none`, além do estado independente da página. Network e embedded data só aceitam um objeto com `itemId` exato.
+Exit codes: `0` para sucesso completo, `2` para processamento concluído com registros inválidos/falhos/pulados e `1` para erro operacional.
 
-Evidências sanitizadas ficam em `artifacts/probes/<run-id>/`; erros têm query strings e tokens removidos e limites de tamanho/quantidade. Screenshot é automática em falha. Trace é desabilitado por padrão e só existe com `--trace`: ele pode conter dados temporários da sessão e nunca deve ser versionado ou entregue sem revisão manual.
+## Saída
 
-Testes Playwright usam apenas um servidor em `127.0.0.1`. A execução live autorizada encontrou verificação humana; o probe encerrou sem clicar, resolver ou contornar o desafio. Novas execuções live não fazem parte do CI.
+Cada produto possui exatamente sete campos: `title`, `normal_price`, `discount_price`, `product_url`, `image_url`, `status` e `error_message`. Preços são inteiros em centavos. URLs duplicadas são preservadas na ordem original.
 
-## Pipeline batch concorrente e resiliente
+Estados incluem `PRODUCT_FOUND`, `PRODUCT_UNAVAILABLE`, `STORE_UNAVAILABLE`, `LOCATION_REQUIRED`, `REDIRECTED_TO_HOME`, `ACCESS_BLOCKED`, `RATE_LIMITED`, `NAVIGATION_TIMEOUT`, `HTTP_ERROR`, `PARSER_ERROR` e `UNKNOWN_PAGE_STATE`. Redirecionamentos e bloqueios permanecem falhas reais; nenhum produto é fabricado.
 
-## Checkpoint e retomada
+Retries seletivos cobrem timeout, 429, 5xx e desconexão real do browser. Pacing, concorrência, backoff e jitter são configuráveis. Falhas de URLs são registradas individualmente e não interrompem o restante do lote. A opção legada de circuit breaker é aceita por compatibilidade, mas não abre nem pula registros. Logs Pino são estruturados e diagnósticos têm URLs/tokens sanitizados.
 
-O comando `crawl` cria checkpoint em `./artifacts/checkpoints/default` e só promove `products.jsonl` e `products.csv` após concluir todos os itens selecionados. Use `--resume` para retomar esse diretório; o arquivo de entrada precisa ter o mesmo hash. `--force-unlock` remove apenas um lock residual e nunca apaga journals.
+## Docker e Compose
 
 ```bash
-node dist/cli/index.js crawl \
-  --input ./input/urls.xlsx \
-  --report ./artifacts/batch-report.json \
-  --limit 10 \
-  --concurrency 2 \
-  --max-retries 3 \
-  --retry-delay 1000 \
-  --retry-max-delay 30000 \
-  --retry-jitter 0.2 \
-  --min-request-interval 500 \
-  --circuit-breaker-threshold 3 \
-  --timeout 30000 \
-  --settle-timeout 5000
+npm run docker:build
+npm run docker:smoke
+docker compose config
+docker compose run --rm crawler --help
+docker compose run --rm crawler validate-input --input /app/input/urls.xlsx
 ```
 
-O lote preserva ordem e duplicidades, compartilha normalmente um processo Chromium e cria contexto e página isolados por tentativa. Um worker pool limita os itens ativos sem criar uma promessa por URL; o pacer aplica intervalo global entre tentativas. Retries seletivos usam backoff exponencial limitado, jitter e `Retry-After`, sem repetir bloqueios ou falhas terminais. O terminal recebe somente o resumo JSON; o relatório técnico completo é escrito atomicamente. O batch não captura screenshots nem traces.
+A imagem usa o Playwright 1.61.1 alinhado ao lockfile, executa como `pwuser`, não contém dependências de desenvolvimento nem materiais locais e recebe entrada somente leitura pelo Compose.
 
-Se o browser desconectar, uma recuperação sincronizada cria apenas uma nova geração. Bloqueios ou rate limits consecutivos abrem o circuit breaker, deixam itens em voo terminar e registram os ainda não iniciados separadamente. `ACCESS_BLOCKED` nunca gera retry.
+## Qualidade, benchmark e entrega
 
-No comando `crawl`, o exit code é `0` quando todos os selecionados têm sucesso e não há entrada inválida, item pulado ou breaker aberto; `2` representa lote concluído com qualquer dessas condições; `1` representa falha operacional fatal sem relatório confiável. Checkpoint e export final ficam para etapas posteriores.
+```bash
+npm run validate
+npm run audit
+npm run benchmark:offline
+npm run verify:output
+npm run verify:delivery
+npm run package:delivery
+```
 
-O desenvolvimento batch offline pode continuar com fixtures, doubles e servidor local. A execução live da planilha oficial permanece proibida enquanto não houver acesso normal e autorizado; nenhum lote real de 999 URLs foi executado nesta etapa.
+Testes e CI nunca acessam o iFood. O benchmark simula 1.000 itens offline e não representa latência live. `verify:output` compara entrada, JSONL, CSV, manifest, hashes, tamanhos, ordem e métricas. `verify:delivery` valida o pacote final e arquivos proibidos. O ZIP e SHA-256 ficam em `release/`.
 
-Consulte [docs/architecture.md](docs/architecture.md) e [docs/adr/0004-sequential-batch-pipeline.md](docs/adr/0004-sequential-batch-pipeline.md) para as decisões arquiteturais.
+## Segurança e limitações
+
+O iFood pode redirecionar URLs para a home, exigir localização, limitar acesso ou retornar verificação humana. O crawler registra o estado e não tenta contornar controles. A taxa oficial é `sucessos / URLs selecionadas * 100`, incluindo falhas reais no denominador.
+
+## Execução oficial atual
+
+A execução oficial corrigida percorreu as 999 URLs: 65 `PRODUCT_FOUND`, 478 `REDIRECTED_TO_HOME`, 437 `ACCESS_BLOCKED` e 19 `UNKNOWN_PAGE_STATE`. Nenhum registro foi pulado; as 934 falhas possuem screenshots no diretório `failure-screenshots` do checkpoint. Os arquivos finais verificados estão em `deliverables/`.
+
+Todas as 999 entradas são URLs estruturalmente válidas, mas somente 65 produtos puderam ser confirmados nessa execução. Os 478 redirecionamentos para a página inicial indicam que a URL do produto não estava mais acessível naquele momento, normalmente por item removido, loja indisponível ou rota expirada. Eles são reportados como falha, sem fabricar dados.
+
+Os 437 resultados `ACCESS_BLOCKED` não comprovam que o link ou produto seja inválido. Nesses casos, a navegação recebeu HTTP 403 ou uma página de erro do Cloudflare antes que o produto pudesse ser verificado. O Cloudflare é a camada de proteção usada pelo site e pode negar uma requisição por regras de segurança, reputação ou volume de acesso. O crawler registra a falha e a evidência, sem tentar contornar essa proteção. Os 19 `UNKNOWN_PAGE_STATE` também permanecem inconclusivos.
+
+Consulte [arquitetura](docs/architecture.md), [runbook](docs/runbook.md), [performance](docs/performance.md), [execução oficial](docs/execution-report.md), [auditoria do planejamento](docs/planning-completion-audit.md), [decisão de entrega](docs/adr/0007-containerization-and-delivery.md), [segurança](SECURITY.md) e [changelog](CHANGELOG.md).

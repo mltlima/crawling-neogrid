@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "runId": "15f5199d-1384-47e3-8cf4-b4c0f377d20e",
+  "inputSha256": "ebcb51914ab776e0373102dab3da7f90f7b97816f4ab71eb37cd40041db381c2",
+  "generatedAt": "2026-07-13T00:15:45.086Z",
+  "productsCount": 999,
+  "pricesInCents": true,
+  "summary": {
+    "successfulRecords": 65,
+    "failedRecords": 934
+  },
+  "files": [
+    {
+      "fileName": "products.jsonl",
+      "sizeBytes": 338952,
+      "sha256": "6eb8a7d84a3ea963aa50c7913e0234d8fdb2c42553e7d6975e8685dc6e797814"
+    },
+    {
+      "fileName": "products.csv",
+      "sizeBytes": 224404,
+      "sha256": "561bd885e8184e5c311d506b93e7e4d27fac43656195225f8d93e979ba6bff33"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "generatedAt": "2026-07-13T14:16:44.024Z",
+  "inputRecords": 999,
+  "confirmedProducts": 241,
+  "successRatePercent": 24.12,
+  "deduplicationKey": "product_url",
+  "files": [
+    "products.jsonl",
+    "products.csv"
+  ]
+}

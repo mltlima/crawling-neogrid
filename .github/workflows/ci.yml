@@ -65,6 +65,7 @@ jobs:
       - run: docker build -t crawling-neogrid:scan .
       - uses: aquasecurity/trivy-action@v0.33.1
         with:
+          version: v0.72.0
           image-ref: crawling-neogrid:scan
           format: sarif
           output: trivy-results.sarif

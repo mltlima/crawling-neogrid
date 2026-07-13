@@ -82,6 +82,12 @@ O iFood pode redirecionar URLs para a home, exigir localização, limitar acesso
 
 A execução oficial corrigida percorreu as 999 URLs: 65 `PRODUCT_FOUND`, 478 `REDIRECTED_TO_HOME`, 437 `ACCESS_BLOCKED` e 19 `UNKNOWN_PAGE_STATE`. Nenhum registro foi pulado; as 934 falhas possuem screenshots no diretório `failure-screenshots` do checkpoint. Os arquivos finais verificados estão em `deliverables/`.
 
+## Produtos confirmados
+
+A consolidação das tentativas controladas confirmou **241 de 999 registros** (24,12%). O arquivo somente com produtos confirmados está em [`deliverables/final-successes/products.jsonl`](deliverables/final-successes/products.jsonl), com versão CSV em [`deliverables/final-successes/products.csv`](deliverables/final-successes/products.csv) e relatório em [`deliverables/final-successes/report.md`](deliverables/final-successes/report.md).
+
+A maioria dos links não pôde ser confirmada: muitos redirecionam para a página inicial, retornam bloqueio do Cloudflare ou permanecem inconclusivos. O conjunto consolidado inclui somente resultados com `status: success`, deduplicados pela URL do produto; nenhuma falha foi transformada artificialmente em produto.
+
 Todas as 999 entradas são URLs estruturalmente válidas, mas somente 65 produtos puderam ser confirmados nessa execução. Os 478 redirecionamentos para a página inicial indicam que a URL do produto não estava mais acessível naquele momento, normalmente por item removido, loja indisponível ou rota expirada. Eles são reportados como falha, sem fabricar dados.
 
 Os 437 resultados `ACCESS_BLOCKED` não comprovam que o link ou produto seja inválido. Nesses casos, a navegação recebeu HTTP 403 ou uma página de erro do Cloudflare antes que o produto pudesse ser verificado. O Cloudflare é a camada de proteção usada pelo site e pode negar uma requisição por regras de segurança, reputação ou volume de acesso. O crawler registra a falha e a evidência, sem tentar contornar essa proteção. Os 19 `UNKNOWN_PAGE_STATE` também permanecem inconclusivos.

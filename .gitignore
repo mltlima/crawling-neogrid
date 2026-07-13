@@ -26,6 +26,9 @@ deliverables/*
 !deliverables/execution-summary.json
 !deliverables/execution-report.md
 !deliverables/SHA256SUMS
+!deliverables/final-successes/
+!deliverables/final-successes/products.jsonl
+!deliverables/final-successes/products.csv
 input/*
 !input/.gitkeep
 release/

@@ -44,7 +44,13 @@ jobs:
       - run: docker run --rm crawling-neogrid:ci --help
       - run: docker run --rm crawling-neogrid:ci --version
       - run: test "$(docker run --rm --entrypoint id crawling-neogrid:ci -u)" != "0"
-      - run: docker run --rm -v "$PWD/tests/fixtures:/app/input:ro" crawling-neogrid:ci validate-input --input /app/input/sample-input.txt
+      - name: Validate intentionally invalid fixture
+        run: |
+          set +e
+          docker run --rm -v "$PWD/tests/fixtures:/app/input:ro" crawling-neogrid:ci validate-input --input /app/input/sample-input.txt
+          exit_code=$?
+          set -e
+          test "$exit_code" -eq 2
 
   supply-chain:
     runs-on: ubuntu-latest
@@ -57,7 +63,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: docker build -t crawling-neogrid:scan .
-      - uses: aquasecurity/trivy-action@0.33.1
+      - uses: aquasecurity/trivy-action@v0.33.1
         with:
           image-ref: crawling-neogrid:scan
           format: sarif
